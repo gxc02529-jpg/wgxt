@@ -83,6 +83,23 @@ def ensure_schema_compat() -> None:
             conn.execute(text("ALTER TABLE article_reviews MODIFY COLUMN reviewer_id INT NULL"))
             print("已迁移：article_reviews.reviewer_id 允许为空（支持系统自动审核）")
 
+    # 幂等新增 view_history 观看时长字段（老库补列，重复执行无副作用）
+    with engine.begin() as conn:
+        for col, ddl in (
+            ("watch_seconds", "ALTER TABLE view_history ADD COLUMN watch_seconds INT NOT NULL DEFAULT 0"),
+            ("watch_count", "ALTER TABLE view_history ADD COLUMN watch_count INT NOT NULL DEFAULT 0"),
+        ):
+            exists = conn.execute(
+                text(
+                    "SELECT COLUMN_NAME FROM information_schema.COLUMNS "
+                    "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'view_history' AND COLUMN_NAME = :col"
+                ),
+                {"col": col},
+            ).first()
+            if not exists:
+                conn.execute(text(ddl))
+                print(f"已迁移：view_history.{col} 新增成功")
+
 
 def get_db():
     """FastAPI 依赖：每个请求一个数据库会话，请求结束自动关闭"""

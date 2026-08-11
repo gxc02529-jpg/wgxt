@@ -5,12 +5,13 @@
 """
 from app.database import Base, engine, SessionLocal, ensure_database, ensure_schema_compat
 from app.models import (  # noqa: F401
-    user, category, article, review, resource, portal, event, interaction,
+    user, category, channel, article, review, resource, portal, event, interaction,
     anonymous_action, system_setting, dify_workflow, view_history,
 )
 from app.core.security import hash_password
 from app.models.user import User
 from app.models.category import Category
+from app.models.channel import Channel
 from app.models.portal import PortalModule
 from app.models.system_setting import SystemSetting
 
@@ -44,7 +45,18 @@ def seed():
             if not db.query(Category).filter(Category.slug == slug).first():
                 db.add(Category(slug=slug, name=name, description=desc, sort_order=sort))
 
-        # 3. 默认门户模块：首页轮播图（空数据，管理员可在后台配置）
+        # 3. 默认分发渠道：门户（基础渠道，所有文稿默认包含且不可移除）
+        if not db.query(Channel).filter(Channel.slug == "portal").first():
+            db.add(Channel(
+                name="门户",
+                slug="portal",
+                description="前台门户基础渠道，所有文稿默认分发，不可移除",
+                is_default=True,
+                status="active",
+                sort_order=0,
+            ))
+
+        # 4. 默认门户模块：首页轮播图（空数据，管理员可在后台配置）
         if not db.query(PortalModule).filter(PortalModule.module_key == "banner").first():
             db.add(PortalModule(module_key="banner", title="首页轮播",
                                 content=[], enabled=True))
@@ -52,7 +64,7 @@ def seed():
             db.add(PortalModule(module_key="notice", title="站内公告",
                                 content="欢迎使用文稿发布系统！", enabled=True))
 
-        # 4. 默认后台配置：自动审核开关（默认关闭，管理员可在后台「系统设置」中开启）
+        # 5. 默认后台配置：自动审核开关（默认关闭，管理员可在后台「系统设置」中开启）
         if not db.query(SystemSetting).filter(SystemSetting.config_key == "auto_review").first():
             db.add(SystemSetting(
                 config_key="auto_review",
@@ -66,6 +78,13 @@ def seed():
                 config_value="editorial",
                 value_type="string",
                 description="前台门户主题：editorial 经典编辑 / cyber 赛博霓虹 / comic 漫画波普",
+            ))
+        if not db.query(SystemSetting).filter(SystemSetting.config_key == "site_grayscale").first():
+            db.add(SystemSetting(
+                config_key="site_grayscale",
+                config_value="false",
+                value_type="bool",
+                description="哀悼灰度模式：开启后前台门户全站显示为黑白（用于名人逝世等场景）",
             ))
 
         db.commit()

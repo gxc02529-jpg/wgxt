@@ -2,6 +2,7 @@
 """模型包：集中导入所有模型，确保 Base.metadata 能发现全部表"""
 from .user import User
 from .category import Category
+from .channel import Channel, article_channels
 from .article import Article, article_categories
 from .review import ArticleReview
 from .resource import Resource
@@ -15,6 +16,7 @@ from .view_history import ViewHistory
 
 __all__ = [
     "User", "Category", "Article", "article_categories", "ArticleReview",
+    "Channel", "article_channels",
     "Resource", "PortalModule", "EventLog", "UserAction", "AnonymousAction",
     "SystemSetting", "DifyWorkflow", "ViewHistory",
 ]

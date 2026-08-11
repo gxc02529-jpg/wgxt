@@ -8,6 +8,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import relationship
 
 from ..database import Base
+from .channel import article_channels
 
 
 # 文稿-栏目 多对多关联表
@@ -46,6 +47,8 @@ class Article(Base):
 
     author = relationship("User", foreign_keys=[author_id])
     categories = relationship("Category", secondary=article_categories, back_populates="articles")
+    # 分发渠道：一篇文稿可同时分发给多个渠道（基础渠道始终包含，见 articles.py _apply_channels）
+    channels = relationship("Channel", secondary=article_channels, back_populates="articles")
     # passive_deletes: 删除文稿时交给数据库 ON DELETE CASCADE 处理审核记录，
     # 避免 SQLAlchemy 默认把 article_reviews.article_id 置空（该列不允许为空，会报错）
     reviews = relationship(
@@ -70,6 +73,10 @@ class Article(Base):
             "favorite_count": self.favorite_count,
             "share_count": self.share_count,
             "categories": [c.to_dict() for c in self.categories],
+            "channels": [
+                {"id": c.id, "name": c.name, "slug": c.slug, "is_default": bool(c.is_default)}
+                for c in self.channels
+            ],
             "published_at": self.published_at.strftime("%Y-%m-%d %H:%M:%S") if self.published_at else None,
             "created_at": self.created_at.strftime("%Y-%m-%d %H:%M:%S") if self.created_at else None,
             "updated_at": self.updated_at.strftime("%Y-%m-%d %H:%M:%S") if self.updated_at else None,

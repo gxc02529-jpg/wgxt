@@ -12,46 +12,16 @@
           <el-icon><Odometer /></el-icon>
           <span>仪表盘</span>
         </el-menu-item>
-        <el-menu-item index="/admin/articles">
-          <el-icon><Document /></el-icon>
-          <span>文稿管理</span>
-        </el-menu-item>
-        <el-menu-item v-if="auth.isAdmin" index="/admin/reviews">
-          <el-icon><Checked /></el-icon>
-          <span>审核管理</span>
-        </el-menu-item>
-        <el-menu-item v-if="auth.isAdmin" index="/admin/categories">
-          <el-icon><FolderOpened /></el-icon>
-          <span>栏目管理</span>
-        </el-menu-item>
-        <el-menu-item v-if="auth.isAdmin" index="/admin/users">
-          <el-icon><User /></el-icon>
-          <span>用户管理</span>
-        </el-menu-item>
-        <el-menu-item index="/admin/resources">
-          <el-icon><Picture /></el-icon>
-          <span>资源管理</span>
-        </el-menu-item>
-        <el-menu-item v-if="auth.isAdmin" index="/admin/portal">
-          <el-icon><SetUp /></el-icon>
-          <span>门户设置</span>
-        </el-menu-item>
-        <el-menu-item v-if="auth.isAdmin" index="/admin/stats">
-          <el-icon><DataAnalysis /></el-icon>
-          <span>数据统计</span>
-        </el-menu-item>
-        <el-menu-item v-if="auth.isAdmin" index="/admin/settings">
-          <el-icon><Setting /></el-icon>
-          <span>系统设置</span>
-        </el-menu-item>
-        <el-menu-item v-if="auth.isAdmin" index="/admin/dify">
-          <el-icon><Connection /></el-icon>
-          <span>Dify 工作流</span>
-        </el-menu-item>
-        <el-menu-item v-if="auth.isAdmin" index="/admin/theme">
-          <el-icon><Brush /></el-icon>
-          <span>门户主题</span>
-        </el-menu-item>
+        <!-- 一级分组：按角色过滤，编辑只看到内容管理里的文稿/资源 -->
+        <el-sub-menu v-for="group in visibleGroups" :key="group.title" :index="group.title">
+          <template #title>
+            <el-icon><component :is="group.icon" /></el-icon>
+            <span>{{ group.title }}</span>
+          </template>
+          <el-menu-item v-for="child in group.children" :key="child.path" :index="child.path">
+            {{ child.label }}
+          </el-menu-item>
+        </el-sub-menu>
       </el-menu>
     </el-aside>
 
@@ -89,13 +59,61 @@
 import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
-  Back, Brush, Checked, Connection, DataAnalysis, Document, FolderOpened, Odometer, Picture, Setting, SetUp, User,
+  Back, Document, FolderOpened, Odometer, Setting, User,
 } from '@element-plus/icons-vue'
 import { useAuthStore } from '../stores/auth'
 
 const route = useRoute()
 const router = useRouter()
 const auth = useAuthStore()
+
+// 后台菜单配置：一级分组 + 二级子项，按角色过滤后渲染
+const menuGroups = [
+  {
+    title: '内容管理',
+    icon: Document,
+    children: [
+      { path: '/admin/articles', label: '文稿管理', roles: ['admin', 'editor'] },
+      { path: '/admin/reviews', label: '审核管理', roles: ['admin'] },
+      { path: '/admin/resources', label: '资源管理', roles: ['admin', 'editor'] },
+    ],
+  },
+  {
+    title: '内容配置',
+    icon: FolderOpened,
+    children: [
+      { path: '/admin/categories', label: '栏目管理', roles: ['admin'] },
+      { path: '/admin/channels', label: '渠道管理', roles: ['admin'] },
+    ],
+  },
+  {
+    title: '用户与数据',
+    icon: User,
+    children: [
+      { path: '/admin/users', label: '用户管理', roles: ['admin'] },
+      { path: '/admin/behavior', label: '用户行为', roles: ['admin'] },
+      { path: '/admin/stats', label: '数据统计', roles: ['admin'] },
+    ],
+  },
+  {
+    title: '门户与系统',
+    icon: Setting,
+    children: [
+      { path: '/admin/portal', label: '门户设置', roles: ['admin'] },
+      { path: '/admin/theme', label: '门户主题', roles: ['admin'] },
+      { path: '/admin/settings', label: '系统设置', roles: ['admin'] },
+      { path: '/admin/dify', label: 'Dify 工作流', roles: ['admin'] },
+    ],
+  },
+]
+
+// 当前角色可见的分组（空分组自动隐藏）
+const visibleGroups = computed(() => {
+  const role = auth.user?.role
+  return menuGroups
+    .map((g) => ({ ...g, children: g.children.filter((c) => c.roles.includes(role)) }))
+    .filter((g) => g.children.length)
+})
 
 // 高亮当前菜单项（编辑页归入文稿管理）
 const activeMenu = computed(() => {

@@ -18,6 +18,17 @@ export const categoryApi = {
   remove: (id) => client.delete(`/categories/${id}`),
 }
 
+// ---- 分发渠道 ----
+export const channelApi = {
+  list: () => client.get('/channels'),
+  manage: () => client.get('/channels/manage'),
+  create: (data) => client.post('/channels', data),
+  update: (id, data) => client.put(`/channels/${id}`, data),
+  remove: (id) => client.delete(`/channels/${id}`),
+  // RSS 订阅地址（第三方平台读取用）
+  rssUrl: (id) => `${window.location.origin}/api/channels/${id}/rss`,
+}
+
 // ---- 文稿 ----
 export const articleApi = {
   list: (params) => client.get('/articles', { params }),
@@ -45,6 +56,8 @@ export const interactionApi = {
   unlike: (articleId) => client.delete('/interactions/like', { params: { article_id: articleId } }),
   favorite: (articleId) => client.post('/interactions/favorite', null, { params: { article_id: articleId } }),
   unfavorite: (articleId) => client.delete('/interactions/favorite', { params: { article_id: articleId } }),
+  dislike: (articleId) => client.post('/interactions/dislike', null, { params: { article_id: articleId } }),
+  undislike: (articleId) => client.delete('/interactions/dislike', { params: { article_id: articleId } }),
   share: (articleId, fingerprint) =>
     client.post('/interactions/share', null, { params: { article_id: articleId, fingerprint } }),
   status: (articleId) => client.get('/interactions/status', { params: { article_id: articleId } }),
@@ -54,6 +67,13 @@ export const interactionApi = {
 // ---- 观看历史（记录由后端在文章详情接口中自动写入，这里只做查询）----
 export const historyApi = {
   list: (params) => client.get('/history', { params }),
+  reportDuration: (articleId, seconds) => client.post(`/history/${articleId}/duration`, { seconds }),
+}
+
+// ---- 后台用户行为（管理员）----
+export const behaviorApi = {
+  viewHistory: (params) => client.get('/admin/behavior/history', { params }),
+  dislikes: (params) => client.get('/admin/behavior/dislikes', { params }),
 }
 
 // ---- 埋点 ----
@@ -77,6 +97,7 @@ export const portalApi = {
   modules: () => client.get('/portal/modules'),
   create: (data) => client.post('/portal/modules', data),
   update: (key, data) => client.put(`/portal/modules/${key}`, data),
+  grayscale: () => client.get('/portal/grayscale'),
 }
 
 // ---- 门户主题 ----

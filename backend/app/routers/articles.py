@@ -16,6 +16,7 @@ from ..core.pagination import paginate
 from ..database import get_db
 from ..models.article import Article, article_categories
 from ..models.category import Category
+from ..models.channel import Channel
 from ..models.review import ArticleReview
 from ..models.user import User
 from ..models.view_history import ViewHistory
@@ -40,6 +41,16 @@ def _apply_categories(db: Session, article: Article, category_ids: list[int]):
     ids = list(dict.fromkeys(category_ids))  # 去重
     cats = db.query(Category).filter(Category.id.in_(ids)).all() if ids else []
     article.categories = cats
+
+
+def _apply_channels(db: Session, article: Article, channel_ids: list[int]):
+    """重置文稿分发渠道：基础渠道（is_default）始终包含且不可移除"""
+    default = db.query(Channel).filter(Channel.is_default.is_(True)).first()
+    ids = list(dict.fromkeys([*(channel_ids or []), default.id])) if default else list(dict.fromkeys(channel_ids or []))
+    channels = db.query(Channel).filter(Channel.id.in_(ids), Channel.status == "active").all() if ids else []
+    if default and default not in channels:
+        channels.append(default)
+    article.channels = channels
 
 
 @router.get("", summary="前台文稿列表（仅已发布）")
@@ -176,6 +187,7 @@ def create_article(body: ArticleIn, db: Session = Depends(get_db), user: User = 
     db.add(article)
     db.flush()
     _apply_categories(db, article, body.category_ids)
+    _apply_channels(db, article, body.channel_ids)
     db.commit()
     db.refresh(article)
     return {"message": "草稿已保存", "article": article.to_dict()}
@@ -196,6 +208,7 @@ def update_article(article_id: int, body: ArticleIn, db: Session = Depends(get_d
     article.content = body.content
     article.cover_url = body.cover_url
     _apply_categories(db, article, body.category_ids)
+    _apply_channels(db, article, body.channel_ids)
     db.commit()
     db.refresh(article)
     return {"message": "保存成功", "article": article.to_dict()}

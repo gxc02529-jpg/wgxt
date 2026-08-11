@@ -12,6 +12,7 @@ class ArticleIn(BaseModel):
     content: str = Field(default="", description="正文（HTML）")
     cover_url: str = Field(default="", max_length=255, description="封面图URL")
     category_ids: List[int] = Field(default_factory=list, description="所属栏目ID列表（可多选）")
+    channel_ids: List[int] = Field(default_factory=list, description="分发渠道ID列表（可多选；基础渠道自动包含，不可移除）")
 
 
 class ReviewIn(BaseModel):

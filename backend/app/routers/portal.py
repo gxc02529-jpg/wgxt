@@ -24,6 +24,12 @@ def get_portal_theme(db: Session = Depends(get_db)):
     return {"theme": theme}
 
 
+@router.get("/grayscale", summary="查询门户哀悼灰度模式开关（公开）")
+def get_grayscale(db: Session = Depends(get_db)):
+    """名人逝世等场景下，管理员在后台系统设置开启后，前台门户全站显示为黑白"""
+    return {"enabled": bool(get_setting(db, "site_grayscale", default=False))}
+
+
 @router.put("/theme", summary="切换门户主题（管理员）")
 def set_portal_theme(
     body: ThemeSwitchIn,

@@ -14,7 +14,7 @@ from fastapi.staticfiles import StaticFiles
 from .config import settings
 from .database import Base, engine, ensure_database, ensure_schema_compat
 from .routers import (
-    articles, auth, categories, dify, events, history, interactions, portal,
+    admin_behavior, articles, auth, categories, channels, dify, events, history, interactions, portal,
     resources, reviews, settings as settings_router, stats, users,
 )
 
@@ -52,8 +52,10 @@ app.mount("/static", StaticFiles(directory=settings.UPLOAD_DIR), name="static")
 # 统一 /api 前缀挂载各模块路由
 api_router = APIRouter(prefix="/api")
 api_router.include_router(auth.router)
+api_router.include_router(admin_behavior.router)
 api_router.include_router(users.router)
 api_router.include_router(categories.router)
+api_router.include_router(channels.router)
 api_router.include_router(articles.router)
 api_router.include_router(reviews.router)
 api_router.include_router(interactions.router)

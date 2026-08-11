@@ -31,7 +31,7 @@
         <!-- 正文（编辑器以 HTML 形式编写，生产环境建议对 content 做 XSS 过滤） -->
         <div class="article-content detail__content" v-html="article.content"></div>
 
-        <!-- 互动栏：点赞 / 收藏 / 转发 -->
+        <!-- 互动栏：点赞 / 收藏 / 不感兴趣 / 转发 -->
         <footer class="detail__actions" role="group" aria-label="文稿互动">
           <button class="action-btn" :class="{ 'action-btn--active': liked }" :disabled="!auth.isLoggedIn" @click="toggleLike">
             <svg v-if="!liked" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
@@ -50,7 +50,15 @@
             <span>收藏 {{ article.favorite_count }}</span>
           </button>
 
-          <button class="action-btn" :class="{ 'action-btn--active': favorited }" :disabled="!auth.isLoggedIn" @click="share">
+          <button class="action-btn" :class="{ 'action-btn--active': disliked }" :disabled="!auth.isLoggedIn" @click="toggleDislike">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+              <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" />
+              <line x1="1" y1="1" x2="23" y2="23" />
+            </svg>
+            <span>不感兴趣</span>
+          </button>
+
+          <button class="action-btn"  :disabled="!auth.isLoggedIn" @click="share">
             <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
               <circle cx="18" cy="5" r="3" /><circle cx="6" cy="12" r="3" /><circle cx="18" cy="19" r="3" />
               <path d="m8.59 13.51 6.83 3.98M15.41 6.51l-6.82 3.98" />
@@ -96,10 +104,10 @@
 </template>
 
 <script setup>
-import { onMounted, ref } from 'vue'
+import { onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { articleApi, eventApi, interactionApi } from '../../api'
+import { articleApi, eventApi, historyApi, interactionApi } from '../../api'
 import { useAuthStore } from '../../stores/auth'
 
 const route = useRoute()
@@ -109,17 +117,24 @@ const related = ref([])
 const loading = ref(true)
 const liked = ref(false)
 const favorited = ref(false)
+const disliked = ref(false)
+
+// 观看时长统计：进入页面记起点，离开/切后台时上报（单次会话上限 600 秒）
+const watchStart = ref(Date.now())
+const durationReported = ref(false)
 
 onMounted(async () => {
   const id = Number(route.params.id)
   try {
     const [detail, statusRes] = await Promise.all([
       articleApi.detail(id),
-      auth.isLoggedIn ? interactionApi.status(id) : Promise.resolve({ liked: false, favorited: false }),
+      auth.isLoggedIn ? interactionApi.status(id) : Promise.resolve({ liked: false, favorited: false, disliked: false }),
     ])
     article.value = detail
     liked.value = statusRes.liked
     favorited.value = statusRes.favorited
+    disliked.value = statusRes.disliked
+    watchStart.value = Date.now()
 
     // 观看埋点：进入详情页即上报
     eventApi.report({ event_type: 'view', article_id: id }).catch(() => {})
@@ -128,12 +143,30 @@ onMounted(async () => {
     // 相关推荐：同栏目已发布文稿（后端按发布时间新到旧返回）
     const res = await articleApi.related(id, { limit: 6 })
     related.value = res.items
+    window.addEventListener('pagehide', onPageHide)
   } catch (e) {
     ElMessage.error(String(e))
   } finally {
     loading.value = false
   }
 })
+
+onBeforeUnmount(() => {
+  reportWatchDuration()
+  window.removeEventListener('pagehide', onPageHide)
+})
+
+function onPageHide() {
+  reportWatchDuration()
+}
+
+// 上报本次观看时长：取实际停留秒数并封顶 600 秒（10 分钟），只上报一次
+function reportWatchDuration() {
+  if (durationReported.value || !article.value || !auth.isLoggedIn) return
+  durationReported.value = true
+  const seconds = Math.min(600, Math.max(1, Math.floor((Date.now() - watchStart.value) / 1000)))
+  historyApi.reportDuration(article.value.id, seconds).catch(() => {})
+}
 
 async function toggleLike() {
   try {
@@ -152,6 +185,22 @@ async function toggleFavorite() {
       : await interactionApi.favorite(article.value.id)
     favorited.value = res.favorited
     article.value.favorite_count = res.favorite_count ?? article.value.favorite_count
+  } catch (e) {
+    ElMessage.error(String(e))
+  }
+}
+
+async function toggleDislike() {
+  try {
+    const res = disliked.value
+      ? await interactionApi.undislike(article.value.id)
+      : await interactionApi.dislike(article.value.id)
+    disliked.value = res.disliked
+    if (res.disliked) {
+      ElMessage.info('已标记不感兴趣，后续推荐将减少此类内容')
+    } else {
+      ElMessage.success('已取消不感兴趣')
+    }
   } catch (e) {
     ElMessage.error(String(e))
   }

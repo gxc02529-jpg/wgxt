@@ -103,7 +103,7 @@
 import { computed, onMounted, onUnmounted, ref, watchEffect } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { categoryApi, themeApi } from '../api'
+import { categoryApi, portalApi, themeApi } from '../api'
 import { useAuthStore } from '../stores/auth'
 
 const route = useRoute()
@@ -112,15 +112,19 @@ const auth = useAuthStore()
 const categories = ref([])
 const keyword = ref('')
 const theme = ref('editorial')
+const grayscale = ref(false)
 
 // 当前栏目高亮（从路由 slug 判断；computed 保证切换栏目时高亮同步更新）
 const currentSlug = computed(() => route.params.slug || '')
 
 // 登录/注册页保持经典编辑风，不参与换肤
 const isAuthPage = computed(() => ['login', 'register'].includes(route.name))
-const shellClass = computed(() =>
-  !isAuthPage.value && theme.value !== 'editorial' ? `theme-${theme.value}` : '',
-)
+const shellClass = computed(() => {
+  const themeClass = !isAuthPage.value && theme.value !== 'editorial' ? `theme-${theme.value}` : ''
+  // 哀悼灰度模式：无论是否换肤都生效（登录/注册页也一并置灰）
+  const grayClass = grayscale.value ? 'portal-grayscale' : ''
+  return [themeClass, grayClass].filter(Boolean).join(' ')
+})
 
 // 把主题类同步到 <body>：Element Plus 的下拉/浮层（如右上角用户菜单）
 // 默认渲染在 body 下，无法继承 .portal-shell 上的主题变量，挂到 body 后浮层才能随主题换肤。
@@ -142,6 +146,12 @@ onMounted(async () => {
     theme.value = res.theme || 'editorial'
   } catch {
     // 主题拉取失败不阻塞页面
+  }
+  try {
+    const gres = await portalApi.grayscale()
+    grayscale.value = gres.enabled
+  } catch {
+    // 灰度开关拉取失败不阻塞页面
   }
   try {
     const res = await categoryApi.list()

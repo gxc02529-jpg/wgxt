@@ -25,6 +25,16 @@
         </el-form-item>
       </div>
 
+      <!-- 分发渠道：基础渠道（门户）默认勾选且不可更改，其余渠道可多选 -->
+      <el-form-item label="分发渠道（可多选，用于第三方平台 RSS 分发）" prop="channel_ids">
+        <el-checkbox-group v-model="form.channel_ids">
+          <el-checkbox v-for="ch in channels" :key="ch.id" :value="ch.id" :disabled="ch.is_default">
+            {{ ch.name }}
+            <el-tag v-if="ch.is_default" size="small" type="info" class="channel-default-tag">基础渠道</el-tag>
+          </el-checkbox>
+        </el-checkbox-group>
+      </el-form-item>
+
       <el-form-item label="封面图（从资源库选择）">
         <ResourcePicker v-model="form.cover_url" />
       </el-form-item>
@@ -52,7 +62,7 @@
 import { onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { articleApi, categoryApi } from '../../api'
+import { articleApi, categoryApi, channelApi } from '../../api'
 import ResourcePicker from '../../components/ResourcePicker.vue'
 
 const route = useRoute()
@@ -60,6 +70,7 @@ const router = useRouter()
 const isEdit = Boolean(route.params.id)
 const formRef = ref()
 const categories = ref([])
+const channels = ref([])
 const saving = ref(false)
 const submitting = ref(false)
 const previewMode = ref(false)
@@ -69,6 +80,7 @@ const form = reactive({
   summary: '',
   cover_url: '',
   category_ids: [],
+  channel_ids: [],
   content: '',
 })
 
@@ -79,8 +91,10 @@ const rules = {
 
 onMounted(async () => {
   try {
-    const catRes = await categoryApi.list()
+    const [catRes, chRes] = await Promise.all([categoryApi.list(), channelApi.list()])
     categories.value = catRes.items
+    channels.value = chRes.items
+    const defaultChannel = channels.value.find((c) => c.is_default)
     if (isEdit) {
       const detail = await articleApi.detail(route.params.id)
       Object.assign(form, {
@@ -89,7 +103,11 @@ onMounted(async () => {
         cover_url: detail.cover_url,
         content: detail.content || '',
         category_ids: detail.categories.map((c) => c.id),
+        channel_ids: (detail.channels || []).map((c) => c.id),
       })
+    } else if (defaultChannel) {
+      // 新文稿默认勾选基础渠道（后端也会强制包含，这里保证界面一致）
+      form.channel_ids = [defaultChannel.id]
     }
   } catch (e) {
     ElMessage.error(String(e))
@@ -111,6 +129,7 @@ async function save(submitReview) {
       cover_url: form.cover_url,
       content: form.content,
       category_ids: form.category_ids,
+      channel_ids: form.channel_ids,
     }
     const res = isEdit
       ? await articleApi.update(route.params.id, payload)
@@ -154,6 +173,10 @@ async function save(submitReview) {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 20px;
+}
+
+.channel-default-tag {
+  margin-left: 6px;
 }
 
 .editor-toolbar {

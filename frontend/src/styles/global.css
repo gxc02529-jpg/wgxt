@@ -133,6 +133,12 @@ body {
   color: var(--color-text);
 }
 
+/* 哀悼灰度模式：后台系统设置开启 site_grayscale 后，前台门户全站显示为黑白 */
+.portal-shell.portal-grayscale {
+  filter: grayscale(1);
+  transition: filter 0.4s ease;
+}
+
 /* 仅屏幕阅读器可见（用于为页面提供唯一 h1 等） */
 .sr-only {
   position: absolute;

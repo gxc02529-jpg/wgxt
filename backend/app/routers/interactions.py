@@ -78,6 +78,27 @@ def unfavorite(article_id: int, db: Session = Depends(get_db), user: User = Depe
     return {"message": "尚未收藏", "favorited": False}
 
 
+@router.post("/dislike", summary="不感兴趣（记录负向反馈，供推荐过滤/降权使用）")
+def dislike(article_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    article = _get_published_article(db, article_id)
+    exists = db.query(UserAction).filter_by(user_id=user.id, article_id=article_id, action_type="dislike").first()
+    if not exists:
+        db.add(UserAction(user_id=user.id, article_id=article_id, action_type="dislike"))
+        db.commit()
+        return {"message": "已标记不感兴趣", "disliked": True}
+    return {"message": "已标记过不感兴趣", "disliked": True}
+
+
+@router.delete("/dislike", summary="取消不感兴趣")
+def undislike(article_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    action = db.query(UserAction).filter_by(user_id=user.id, article_id=article_id, action_type="dislike").first()
+    if action:
+        db.delete(action)
+        db.commit()
+        return {"message": "已取消不感兴趣", "disliked": False}
+    return {"message": "尚未标记不感兴趣", "disliked": False}
+
+
 @router.post("/share", summary="转发（登录用户按账号去重，未登录用户按设备指纹去重）")
 def share(
     article_id: int,
@@ -144,7 +165,8 @@ def share(
 def my_status(article_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     liked = db.query(UserAction).filter_by(user_id=user.id, article_id=article_id, action_type="like").first()
     favorited = db.query(UserAction).filter_by(user_id=user.id, article_id=article_id, action_type="favorite").first()
-    return {"liked": liked is not None, "favorited": favorited is not None}
+    disliked = db.query(UserAction).filter_by(user_id=user.id, article_id=article_id, action_type="dislike").first()
+    return {"liked": liked is not None, "favorited": favorited is not None, "disliked": disliked is not None}
 
 
 @router.get("/favorites", summary="我的收藏列表")
