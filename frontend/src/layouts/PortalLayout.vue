@@ -9,7 +9,7 @@
             <rect width="32" height="32" rx="6" fill="#2563EB" />
             <path d="M9 9h14v3H12v4h10v3H12v4h11v3H9z" fill="#fff" />
           </svg>
-          <span class="brand__text">文稿发布</span>
+          <span class="brand__text">在线融媒体文稿平台</span>
         </router-link>
 
         <form class="search-box" role="search" @submit.prevent="doSearch">

@@ -50,7 +50,7 @@
             <span>收藏 {{ article.favorite_count }}</span>
           </button>
 
-          <button class="action-btn" :disabled="!auth.isLoggedIn" @click="share">
+          <button class="action-btn" :class="{ 'action-btn--active': favorited }" :disabled="!auth.isLoggedIn" @click="share">
             <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
               <circle cx="18" cy="5" r="3" /><circle cx="6" cy="12" r="3" /><circle cx="18" cy="19" r="3" />
               <path d="m8.59 13.51 6.83 3.98M15.41 6.51l-6.82 3.98" />
@@ -59,7 +59,7 @@
           </button>
         </footer>
         <p v-if="!auth.isLoggedIn" class="detail__login-tip">
-          <router-link to="/login">登录</router-link> 后可点赞、收藏和转发
+          <router-link to="/login">登录</router-link> 后可点赞、收藏、转发；<!--无需登录，同一浏览器只统计一次!-->
         </p>
       </template>
     </article>
@@ -159,18 +159,32 @@ async function toggleFavorite() {
 
 async function share() {
   try {
-    await interactionApi.share(article.value.id)
-    article.value.share_count += 1
+    // 登录用户按账号去重，未登录用户按设备指纹去重，是否首次转发由后端判定
+    const res = await interactionApi.share(
+      article.value.id,
+      auth.isLoggedIn ? undefined : getFingerprint(),
+    )
+    article.value.share_count = res.share_count ?? article.value.share_count
     // 复制链接到剪贴板（失败时降级提示）
     try {
       await navigator.clipboard.writeText(window.location.href)
-      ElMessage.success('转发成功，链接已复制')
+      ElMessage.success(res.shared === false ? '已转发过，链接仍可复制' : '转发成功，链接已复制')
     } catch {
-      ElMessage.success('转发成功')
+      ElMessage.success(res.shared === false ? '已转发过，仅统计一次' : '转发成功')
     }
   } catch (e) {
     ElMessage.error(String(e))
   }
+}
+
+// 设备指纹：存 localStorage，稳定且不采集隐私；未登录用户以此识别同一浏览器
+function getFingerprint() {
+  let fp = localStorage.getItem('wgf_device_fp')
+  if (!fp) {
+    fp = window.crypto?.randomUUID?.() || `fp-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
+    localStorage.setItem('wgf_device_fp', fp)
+  }
+  return fp
 }
 </script>
 

@@ -8,12 +8,13 @@ from .resource import Resource
 from .portal import PortalModule
 from .event import EventLog
 from .interaction import UserAction
+from .anonymous_action import AnonymousAction
 from .system_setting import SystemSetting
 from .dify_workflow import DifyWorkflow
 from .view_history import ViewHistory
 
 __all__ = [
     "User", "Category", "Article", "article_categories", "ArticleReview",
-    "Resource", "PortalModule", "EventLog", "UserAction", "SystemSetting", "DifyWorkflow",
-    "ViewHistory",
+    "Resource", "PortalModule", "EventLog", "UserAction", "AnonymousAction",
+    "SystemSetting", "DifyWorkflow", "ViewHistory",
 ]

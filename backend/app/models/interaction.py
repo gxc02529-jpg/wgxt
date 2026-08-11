@@ -16,7 +16,7 @@ class UserAction(Base):
     id = Column(Integer, primary_key=True, index=True, comment="互动ID")
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True, comment="用户ID")
     article_id = Column(Integer, ForeignKey("articles.id", ondelete="CASCADE"), nullable=False, index=True, comment="文稿ID")
-    # 行为类型：like 点赞 / favorite 收藏
+    # 行为类型：like 点赞 / favorite 收藏 / share 转发（转发去重复用同一唯一约束）
     action_type = Column(String(20), nullable=False, comment="行为类型")
     created_at = Column(DateTime, default=datetime.now, comment="互动时间")
 

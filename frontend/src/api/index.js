@@ -45,7 +45,8 @@ export const interactionApi = {
   unlike: (articleId) => client.delete('/interactions/like', { params: { article_id: articleId } }),
   favorite: (articleId) => client.post('/interactions/favorite', null, { params: { article_id: articleId } }),
   unfavorite: (articleId) => client.delete('/interactions/favorite', { params: { article_id: articleId } }),
-  share: (articleId) => client.post('/interactions/share', null, { params: { article_id: articleId } }),
+  share: (articleId, fingerprint) =>
+    client.post('/interactions/share', null, { params: { article_id: articleId, fingerprint } }),
   status: (articleId) => client.get('/interactions/status', { params: { article_id: articleId } }),
   favorites: (params) => client.get('/interactions/favorites', { params }),
 }

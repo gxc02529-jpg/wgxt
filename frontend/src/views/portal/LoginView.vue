@@ -6,7 +6,7 @@
           <rect width="32" height="32" rx="6" fill="#2563EB" />
           <path d="M9 9h14v3H12v4h10v3H12v4h11v3H9z" fill="#fff" />
         </svg>
-        <span>文稿发布</span>
+        <span>在线融媒体文稿平台</span>
       </router-link>
 
       <h1 class="auth-card__title">欢迎回来</h1>
