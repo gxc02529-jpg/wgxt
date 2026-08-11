@@ -1,0 +1,10 @@
+[
+  {
+    "date": "2026-08-10",
+    "macrostructure": "Front Page + Catalogue + Long Document + Form",
+    "theme": "Editorial (brand blue/orange)",
+    "enrichment": "none",
+    "brief": "前台门户重构：头版/目录/长文/表单四类结构，保留全部业务逻辑",
+    "scope": "app"
+  }
+]

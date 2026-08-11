@@ -1,0 +1,11 @@
+{
+  "date": "2026-08-10",
+  "project": "E:\\xiangmu\\python\\wgxt",
+  "font_stack": "Newsreader (display) + Roboto (body)，index.html Google Fonts link",
+  "palette": "tokens.css :root，品牌 #2563EB / #F97316，slate 灰阶",
+  "motion": "motion-cut（无动画库，仅 CSS transition）",
+  "spacing": "4pt 命名刻度（--space-1..7）",
+  "framework": "Vue 3 + Vite + Element Plus",
+  "design_md": "本文件生成于 2026-08-10，portal 重构创建",
+  "notes": "后台页面（AdminLayout/views/admin）不在重构范围，既有 token 名称全部保留"
+}

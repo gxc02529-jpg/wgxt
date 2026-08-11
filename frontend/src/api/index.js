@@ -1,0 +1,115 @@
+// 统一 API 定义：按模块分组，方便二次开发维护
+import client from './client'
+
+// ---- 认证与个人中心 ----
+export const authApi = {
+  register: (data) => client.post('/auth/register', data),
+  login: (data) => client.post('/auth/login', data),
+  me: () => client.get('/auth/me'),
+  updateMe: (data) => client.put('/auth/me', data),
+}
+
+// ---- 栏目 ----
+export const categoryApi = {
+  list: () => client.get('/categories'),
+  manage: () => client.get('/categories/manage'),
+  create: (data) => client.post('/categories', data),
+  update: (id, data) => client.put(`/categories/${id}`, data),
+  remove: (id) => client.delete(`/categories/${id}`),
+}
+
+// ---- 文稿 ----
+export const articleApi = {
+  list: (params) => client.get('/articles', { params }),
+  detail: (id) => client.get(`/articles/${id}`),
+  related: (id, params) => client.get(`/articles/${id}/related`, { params }),
+  mine: (params) => client.get('/articles/mine', { params }),
+  adminList: (params) => client.get('/articles/admin', { params }),
+  create: (data) => client.post('/articles', data),
+  update: (id, data) => client.put(`/articles/${id}`, data),
+  submit: (id) => client.post(`/articles/${id}/submit`),
+  offline: (id) => client.post(`/articles/${id}/offline`),
+  remove: (id) => client.delete(`/articles/${id}`),
+}
+
+// ---- 审核 ----
+export const reviewApi = {
+  pending: (params) => client.get('/reviews/pending', { params }),
+  history: (params) => client.get('/reviews/history', { params }),
+  review: (data) => client.post('/reviews', data),
+}
+
+// ---- 互动（点赞/收藏/转发）----
+export const interactionApi = {
+  like: (articleId) => client.post('/interactions/like', null, { params: { article_id: articleId } }),
+  unlike: (articleId) => client.delete('/interactions/like', { params: { article_id: articleId } }),
+  favorite: (articleId) => client.post('/interactions/favorite', null, { params: { article_id: articleId } }),
+  unfavorite: (articleId) => client.delete('/interactions/favorite', { params: { article_id: articleId } }),
+  share: (articleId) => client.post('/interactions/share', null, { params: { article_id: articleId } }),
+  status: (articleId) => client.get('/interactions/status', { params: { article_id: articleId } }),
+  favorites: (params) => client.get('/interactions/favorites', { params }),
+}
+
+// ---- 埋点 ----
+export const eventApi = {
+  report: (data) => client.post('/events', data),
+}
+
+// ---- 资源 ----
+export const resourceApi = {
+  upload: (formData) =>
+    client.post('/resources/upload', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+      timeout: 60000,
+    }),
+  list: (params) => client.get('/resources', { params }),
+  remove: (id) => client.delete(`/resources/${id}`),
+}
+
+// ---- 门户模块 ----
+export const portalApi = {
+  modules: () => client.get('/portal/modules'),
+  create: (data) => client.post('/portal/modules', data),
+  update: (key, data) => client.put(`/portal/modules/${key}`, data),
+}
+
+// ---- 门户主题 ----
+export const themeApi = {
+  get: () => client.get('/portal/theme'),
+  set: (theme) => client.put('/portal/theme', { theme }),
+}
+
+// ---- 用户管理 ----
+export const userApi = {
+  list: (params) => client.get('/users', { params }),
+  create: (data) => client.post('/users', data),
+  update: (id, data) => client.put(`/users/${id}`, data),
+  remove: (id) => client.delete(`/users/${id}`),
+}
+
+// ---- 统计 ----
+export const statsApi = {
+  overview: () => client.get('/stats/overview'),
+  trends: (params) => client.get('/stats/trends', { params }),
+  topArticles: (params) => client.get('/stats/articles', { params }),
+  categories: (params) => client.get('/stats/categories', { params }),
+  events: (params) => client.get('/stats/events', { params }),
+  userActivity: (params) => client.get('/stats/user-activity', { params }),
+}
+
+// ---- 系统设置 ----
+export const settingsApi = {
+  list: () => client.get('/settings'),
+  create: (data) => client.post('/settings', data),
+  update: (key, data) => client.put(`/settings/${key}`, data),
+  remove: (key) => client.delete(`/settings/${key}`),
+}
+
+// ---- Dify 工作流 ----
+export const difyApi = {
+  list: () => client.get('/dify/workflows'),
+  create: (data) => client.post('/dify/workflows', data),
+  update: (id, data) => client.put(`/dify/workflows/${id}`, data),
+  remove: (id) => client.delete(`/dify/workflows/${id}`),
+  run: (id, data) => client.post(`/dify/workflows/${id}/run`, data),
+}

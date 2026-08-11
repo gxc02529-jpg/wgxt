@@ -1,0 +1,377 @@
+/* ============================================================
+ * 门户主题（design.md 扩展 · 2026-08-11）
+ *
+ * 换肤原理：PortalLayout 的外壳元素按后端 portal_theme 配置挂载
+ * .theme-cyber / .theme-comic 类，覆盖 :root 的设计令牌；
+ * 门户组件全部通过 var(--*) 引用令牌，因此自动换肤，业务逻辑零改动。
+ * 登录页 / 后台页不挂主题类，保持经典编辑风。
+ *
+ * 扩充新风格：在 backend/app/routers/portal.py 的 PORTAL_THEMES
+ * 登记 key，并在此文件新增 .theme-<key> 覆盖块。
+ * ============================================================ */
+
+/* ---- 赛博霓虹 Cyber Neon：暗底 + 霓虹青/品红 + 辉光 ---- */
+.theme-cyber {
+  font-family: var(--font-body);
+  --color-primary: #00e5ff;
+  --color-primary-dark: #00b8d4;
+  --color-primary-soft: rgba(0, 229, 255, 0.14);
+  --color-secondary: #7c4dff;
+  --color-accent: #ff2d78;
+  --color-accent-soft: rgba(255, 45, 120, 0.16);
+  --color-bg: #0a0e1a;
+  --color-surface: #101528;
+  --color-text: #e6f7ff;
+  --color-text-secondary: #9fb3c8;
+  --color-text-muted: #5c6f84;
+  --color-border: #1d2a45;
+  --color-danger: #ff5370;
+  --color-success: #2ee6a8;
+
+  --color-paper: #0d1322;
+  --color-paper-2: #121a30;
+  --color-ink: #e6f7ff;
+  --color-ink-2: #9fb3c8;
+  --color-ink-3: #64748b;
+  --color-rule: #1d2a45;
+  --color-rule-strong: #2a3b5c;
+  --color-accent-2: #ff2d78;
+  --color-accent-2-soft: rgba(255, 45, 120, 0.16);
+
+  --font-heading: 'Orbitron', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  --font-body: 'Rajdhani', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+
+  --shadow-card: 0 0 0 1px rgba(0, 229, 255, 0.18), 0 0 22px rgba(0, 229, 255, 0.12);
+  --shadow-float: 0 0 0 1px rgba(255, 45, 120, 0.28), 0 0 30px rgba(255, 45, 120, 0.18);
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+
+  --color-footer-bg: #04060d;
+  --color-footer-text: #7f93ad;
+  --color-footer-strong: #eaffff;
+  --color-footer-link-hover: #00e5ff;
+
+  background: var(--color-bg);
+  color: var(--color-text);
+}
+
+/* ---- 漫画波普 Comic Pop：奶油底 + 高饱和三原色 + 粗黑描边 ---- */
+.theme-comic {
+  font-family: var(--font-body);
+  --color-primary: #2f6bff;
+  --color-primary-dark: #1a4fd8;
+  --color-primary-soft: #dbe6ff;
+  --color-secondary: #ffd400;
+  --color-accent: #ff3b30;
+  --color-accent-soft: #ffe3e0;
+  --color-bg: #fff6e0;
+  --color-surface: #ffffff;
+  --color-text: #1a1a2e;
+  --color-text-secondary: #4a4a68;
+  --color-text-muted: #7a7a98;
+  --color-border: #1a1a2e;
+  --color-danger: #ff3b30;
+  --color-success: #1faa59;
+
+  --color-paper: #fffdf5;
+  --color-paper-2: #fff3d0;
+  --color-ink: #1a1a2e;
+  --color-ink-2: #4a4a68;
+  --color-ink-3: #7a7a98;
+  --color-rule: #1a1a2e;
+  --color-rule-strong: #1a1a2e;
+  --color-accent-2: #ff8a00;
+  --color-accent-2-soft: #ffe6c2;
+
+  --font-heading: 'Bangers', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  --font-body: 'Comic Neue', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+
+  --rule: 2px;
+  --radius-sm: 0px;
+  --radius-md: 4px;
+  --radius-lg: 8px;
+  --shadow-card: 3px 3px 0 rgba(26, 26, 46, 0.85);
+  --shadow-float: 5px 5px 0 rgba(26, 26, 46, 0.85);
+
+  --color-footer-bg: #1a1a2e;
+  --color-footer-text: #c8c8e0;
+  --color-footer-strong: #ffffff;
+  --color-footer-link-hover: #ffd400;
+
+  background: var(--color-bg);
+  color: var(--color-text);
+}
+
+/* ============================================================
+ * 主题专属布局（PortalLayout 外壳挂类后作用于全部门户页面）
+ * 选择器用 .portal-shell.theme-* 提升优先级，确保覆盖组件 scoped 样式。
+ * ============================================================ */
+
+/* ============ 赛博霓虹 Cyber：玻璃报头 + 霓虹搜索 + 纵向卡片 + 三列网格 ============ */
+.portal-shell.theme-cyber .masthead {
+  background: rgba(13, 19, 34, 0.85);
+  border-bottom: 1px solid rgba(0, 229, 255, 0.35);
+  backdrop-filter: blur(10px);
+}
+
+.portal-shell.theme-cyber .brand__text {
+  text-shadow: 0 0 14px rgba(0, 229, 255, 0.85);
+  letter-spacing: 0.04em;
+}
+
+.portal-shell.theme-cyber .search-box {
+  border: 1px solid rgba(0, 229, 255, 0.4);
+  border-radius: 999px;
+  padding: 8px 6px 8px 16px;
+  background: rgba(0, 229, 255, 0.07);
+}
+
+.portal-shell.theme-cyber .search-box:focus-within {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px rgba(0, 229, 255, 0.18), 0 0 16px rgba(0, 229, 255, 0.35);
+}
+
+.portal-shell.theme-cyber .masthead__nav {
+  background: rgba(16, 21, 40, 0.9);
+  border-top: 1px solid rgba(0, 229, 255, 0.2);
+}
+
+.portal-shell.theme-cyber .masthead__nav a {
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  font-size: 13px;
+  color: var(--color-ink-2);
+}
+
+.portal-shell.theme-cyber .masthead__nav a.active {
+  color: var(--color-primary);
+}
+
+.portal-shell.theme-cyber .masthead__nav a.active::after {
+  background: var(--color-primary);
+  box-shadow: 0 0 10px var(--color-primary);
+}
+
+.portal-shell.theme-cyber .lead__story {
+  border: 1px solid rgba(0, 229, 255, 0.3);
+  box-shadow: 0 0 34px rgba(0, 229, 255, 0.14), inset 0 0 80px rgba(0, 229, 255, 0.04);
+}
+
+.portal-shell.theme-cyber .lead__kicker {
+  background: var(--color-accent-2);
+  color: #fff;
+  padding: 4px 12px;
+  border-radius: 2px;
+  letter-spacing: 0.2em;
+}
+
+.portal-shell.theme-cyber .lead__title {
+  text-shadow: 0 0 24px rgba(0, 229, 255, 0.35);
+}
+
+.portal-shell.theme-cyber .index-section__head,
+.portal-shell.theme-cyber .section__head {
+  border-bottom: 1px solid rgba(0, 229, 255, 0.3);
+}
+
+.portal-shell.theme-cyber .index-section__head h2::before,
+.portal-shell.theme-cyber .section__head h2::before {
+  content: '// ';
+  color: var(--color-accent-2);
+}
+
+.portal-shell.theme-cyber .index-section__head h2,
+.portal-shell.theme-cyber .section__head h2 {
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.portal-shell.theme-cyber .rank-list__no {
+  color: var(--color-accent-2);
+  text-shadow: 0 0 12px rgba(255, 45, 120, 0.8);
+}
+
+.portal-shell.theme-cyber .rank-list__title {
+  font-family: var(--font-heading);
+  letter-spacing: 0.02em;
+}
+
+/* 赛博霓虹 · 卡片：纵向霓虹卡（宽屏三列/双列网格） */
+@media (min-width: 1024px) {
+  .portal-shell.theme-cyber .section__grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 16px;
+  }
+
+  .portal-shell.theme-cyber .article-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 16px;
+  }
+}
+
+.portal-shell.theme-cyber .article-card {
+  flex-direction: column;
+  border: 1px solid rgba(0, 229, 255, 0.18);
+  border-radius: var(--radius-md);
+  background: rgba(16, 21, 40, 0.55);
+  padding: 14px;
+  margin-bottom: 4px;
+  transition: border-color var(--dur-base) var(--ease-out),
+    box-shadow var(--dur-base) var(--ease-out);
+}
+
+.portal-shell.theme-cyber .article-card:hover {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 18px rgba(0, 229, 255, 0.25);
+}
+
+.portal-shell.theme-cyber .article-card__cover {
+  flex-basis: auto;
+  width: 100%;
+  min-height: 0;
+  border: 1px solid rgba(0, 229, 255, 0.25);
+}
+
+.portal-shell.theme-cyber .tag {
+  color: var(--color-primary);
+  background: rgba(0, 229, 255, 0.12);
+}
+
+.portal-shell.theme-cyber .article-card__title a:hover {
+  color: var(--color-primary);
+}
+
+/* ============ 漫画波普 Comic：粗描边报头 + 漫画面板卡 + 列交换 + 贴纸/爆点 ============ */
+.portal-shell.theme-comic .masthead {
+  background: var(--color-paper);
+  border-bottom: 3px solid var(--color-ink);
+}
+
+.portal-shell.theme-comic .brand__text {
+  color: var(--color-accent);
+  text-shadow: 2px 2px 0 rgba(26, 26, 46, 0.9);
+  letter-spacing: 0.02em;
+}
+
+.portal-shell.theme-comic .search-box {
+  border: 2px solid var(--color-ink);
+  background: #fff;
+  border-radius: 999px;
+  padding: 8px 6px 8px 16px;
+}
+
+.portal-shell.theme-comic .masthead__nav {
+  border-top: 2px solid var(--color-ink);
+}
+
+.portal-shell.theme-comic .masthead__nav a {
+  font-weight: 700;
+}
+
+.portal-shell.theme-comic .masthead__nav a.active::after {
+  height: 4px;
+  bottom: -1px;
+  background: var(--color-accent);
+}
+
+/* 漫画波普 · 首页：热门排行移到左侧、最新发布右侧（列交换） */
+@media (min-width: 1024px) {
+  .portal-shell.theme-comic .home__grid {
+    grid-template-columns: 340px minmax(0, 1fr);
+  }
+
+  .portal-shell.theme-comic .home__grid aside {
+    order: 1;
+  }
+
+  .portal-shell.theme-comic .home__grid .index-section:first-child {
+    order: 2;
+  }
+}
+
+.portal-shell.theme-comic .lead__story {
+  border: 3px solid var(--color-ink);
+  box-shadow: 6px 6px 0 rgba(26, 26, 46, 0.85);
+}
+
+.portal-shell.theme-comic .lead__kicker {
+  transform: rotate(-3deg);
+  background: var(--color-accent);
+  color: #fff;
+  border: 2px solid var(--color-ink);
+  padding: 2px 12px;
+  letter-spacing: 0.04em;
+}
+
+.portal-shell.theme-comic .lead__title {
+  color: var(--color-accent);
+  text-shadow: 3px 3px 0 rgba(26, 26, 46, 0.85);
+}
+
+.portal-shell.theme-comic .index-section__head h2,
+.portal-shell.theme-comic .section__head h2 {
+  display: inline-block;
+  transform: rotate(-1.5deg);
+  background: var(--color-secondary);
+  color: var(--color-ink);
+  padding: 2px 14px;
+  border: 2px solid var(--color-ink);
+  box-shadow: 3px 3px 0 rgba(26, 26, 46, 0.85);
+}
+
+.portal-shell.theme-comic .rank-list__no {
+  background: var(--color-accent-2);
+  color: #fff;
+  border: 2px solid var(--color-ink);
+  border-radius: 50%;
+  width: 34px;
+  height: 34px;
+  min-width: 34px;
+  display: grid;
+  place-items: center;
+  box-shadow: 2px 2px 0 rgba(26, 26, 46, 0.85);
+}
+
+.portal-shell.theme-comic .rank-list__no--top {
+  background: var(--color-accent);
+}
+
+.portal-shell.theme-comic .rank-list__title {
+  font-family: var(--font-heading);
+  letter-spacing: 0.02em;
+}
+
+.portal-shell.theme-comic .article-card {
+  border: 2px solid var(--color-ink);
+  background: #fff;
+  box-shadow: 3px 3px 0 rgba(26, 26, 46, 0.85);
+  padding: 12px;
+  margin-bottom: 6px;
+  transition: transform var(--dur-base) var(--ease-out),
+    box-shadow var(--dur-base) var(--ease-out);
+}
+
+.portal-shell.theme-comic .article-card:hover {
+  transform: translate(-1px, -1px);
+  box-shadow: 5px 5px 0 rgba(26, 26, 46, 0.85);
+}
+
+.portal-shell.theme-comic .article-card__cover {
+  border: 2px solid var(--color-ink);
+}
+
+.portal-shell.theme-comic .tag {
+  transform: rotate(-2deg);
+  background: var(--color-secondary);
+  color: var(--color-ink);
+  border: 1.5px solid var(--color-ink);
+}
+
+.portal-shell.theme-comic .story-list__tag {
+  background: var(--color-accent-2);
+  color: #fff;
+  border: 1.5px solid var(--color-ink);
+  transform: rotate(-2deg);
+}
