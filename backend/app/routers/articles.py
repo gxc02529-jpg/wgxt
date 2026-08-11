@@ -18,6 +18,7 @@ from ..models.article import Article, article_categories
 from ..models.category import Category
 from ..models.review import ArticleReview
 from ..models.user import User
+from ..models.view_history import ViewHistory
 from ..schemas.article import ArticleIn
 from ..services.settings_service import get_setting
 
@@ -114,6 +115,15 @@ def get_article(article_id: int, db: Session = Depends(get_db), user: User | Non
         raise HTTPException(404, "文稿不存在")
     if article.status != "published" and not _can_manage(article, user):
         raise HTTPException(403, "该文稿尚未发布")
+    # 记录观看历史：登录用户浏览已发布文稿时写入/更新 view_history
+    # （同一文稿重复观看仅更新时间，历史列表按最近观看时间倒序）
+    if user is not None and article.status == "published":
+        history = db.query(ViewHistory).filter_by(user_id=user.id, article_id=article.id).first()
+        if history:
+            history.viewed_at = datetime.now()
+        else:
+            db.add(ViewHistory(user_id=user.id, article_id=article.id, viewed_at=datetime.now()))
+        db.commit()
     return article.to_dict(include_content=True, include_reviews=_can_manage(article, user))
 
 

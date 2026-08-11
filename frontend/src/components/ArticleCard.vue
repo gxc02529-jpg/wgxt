@@ -35,7 +35,8 @@
       <p v-if="article.summary" class="article-card__summary">{{ article.summary }}</p>
       <div class="article-card__meta">
         <span>{{ article.author_name }}</span>
-        <span>{{ (article.published_at || article.created_at || '').slice(0, 10) }}</span>
+        <!-- 观看历史页优先展示最近观看日期，其余场景展示发布日期 -->
+        <span>{{ (article.viewed_at || article.published_at || article.created_at || '').slice(0, 10) }}</span>
         <span aria-label="浏览量">{{ article.view_count }} 阅读</span>
       </div>
     </div>

@@ -40,6 +40,7 @@
               <template #dropdown>
                 <el-dropdown-menu>
                   <el-dropdown-item @click="router.push('/favorites')">我的收藏</el-dropdown-item>
+                  <el-dropdown-item @click="router.push('/history')">观看历史</el-dropdown-item>
                   <el-dropdown-item v-if="auth.isEditor" @click="router.push('/admin/articles')">
                     写稿/管理
                   </el-dropdown-item>
@@ -99,7 +100,7 @@
 </template>
 
 <script setup>
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watchEffect } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { categoryApi, themeApi } from '../api'
@@ -120,6 +121,19 @@ const isAuthPage = computed(() => ['login', 'register'].includes(route.name))
 const shellClass = computed(() =>
   !isAuthPage.value && theme.value !== 'editorial' ? `theme-${theme.value}` : '',
 )
+
+// 把主题类同步到 <body>：Element Plus 的下拉/浮层（如右上角用户菜单）
+// 默认渲染在 body 下，无法继承 .portal-shell 上的主题变量，挂到 body 后浮层才能随主题换肤。
+watchEffect(() => {
+  document.body.classList.remove('theme-cyber', 'theme-comic')
+  const cls = shellClass.value
+  if (cls) document.body.classList.add(cls)
+})
+
+// 离开门户外壳（如进入后台）时清理 body 上的主题类，避免污染后台/登录页
+onUnmounted(() => {
+  document.body.classList.remove('theme-cyber', 'theme-comic')
+})
 
 onMounted(async () => {
   // 拉取后台配置的门户主题（失败静默降级为经典编辑风，不影响页面使用）

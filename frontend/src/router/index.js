@@ -12,6 +12,7 @@ const routes = [
       { path: 'article/:id', name: 'article-detail', component: () => import('../views/portal/ArticleDetailView.vue') },
       { path: 'search', name: 'search', component: () => import('../views/portal/SearchView.vue') },
       { path: 'favorites', name: 'favorites', component: () => import('../views/portal/FavoritesView.vue'), meta: { requiresAuth: true } },
+      { path: 'history', name: 'history', component: () => import('../views/portal/HistoryView.vue'), meta: { requiresAuth: true } },
       { path: 'login', name: 'login', component: () => import('../views/portal/LoginView.vue') },
       { path: 'register', name: 'register', component: () => import('../views/portal/RegisterView.vue') },
     ],

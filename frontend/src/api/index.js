@@ -50,6 +50,11 @@ export const interactionApi = {
   favorites: (params) => client.get('/interactions/favorites', { params }),
 }
 
+// ---- 观看历史（记录由后端在文章详情接口中自动写入，这里只做查询）----
+export const historyApi = {
+  list: (params) => client.get('/history', { params }),
+}
+
 // ---- 埋点 ----
 export const eventApi = {
   report: (data) => client.post('/events', data),

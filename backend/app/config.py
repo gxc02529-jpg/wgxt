@@ -14,7 +14,7 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=ENV_FILE, env_file_encoding="utf-8")
 
     # 数据库连接（可按部署环境覆盖）
-    DB_HOST: str = "59.110.163.126"
+    DB_HOST: str = "192.168.14.216"
     DB_PORT: int = 3306
     DB_USER: str = "root"
     DB_PASSWORD: str = "password!"
