@@ -16,6 +16,10 @@
         >
           <el-button type="primary" :loading="uploading">上传新图片</el-button>
         </el-upload>
+        <el-button :loading="urlUploading" @click="urlDialogVisible = true">
+          <el-icon><Link /></el-icon>
+          链接上传
+        </el-button>
       </div>
 
       <div v-loading="loading" class="resource-picker__grid">
@@ -43,12 +47,30 @@
         />
       </div>
     </el-dialog>
+
+    <!-- 通过线上链接下载图片并直接设为封面 -->
+    <el-dialog v-model="urlDialogVisible" title="通过链接设置封面" width="480px" append-to-body>
+      <el-input
+        v-model="imageUrl"
+        placeholder="https://example.com/xxx.jpg"
+        clearable
+        @keyup.enter="submitByUrl"
+      />
+      <p class="resource-picker__url-tip">
+        支持 jpg / png / gif / webp / svg，提交后系统会下载图片并直接设为封面
+      </p>
+      <template #footer>
+        <el-button @click="urlDialogVisible = false">取消</el-button>
+        <el-button type="primary" :loading="urlUploading" @click="submitByUrl">下载并设为封面</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup>
 import { ref } from 'vue'
 import { ElMessage } from 'element-plus'
+import { Link } from '@element-plus/icons-vue'
 import { resourceApi } from '../api'
 
 const props = defineProps({
@@ -63,6 +85,9 @@ const page = ref(1)
 const pageSize = 12
 const loading = ref(false)
 const uploading = ref(false)
+const urlDialogVisible = ref(false)
+const imageUrl = ref('')
+const urlUploading = ref(false)
 
 async function load(p) {
   if (p) page.value = p
@@ -90,6 +115,33 @@ async function doUpload({ file }) {
     ElMessage.error(String(e))
   } finally {
     uploading.value = false
+  }
+}
+
+async function submitByUrl() {
+  const url = imageUrl.value.trim()
+  if (!url) {
+    ElMessage.warning('请输入图片链接')
+    return
+  }
+  if (!/^https?:\/\//i.test(url)) {
+    ElMessage.warning('仅支持 http/https 链接')
+    return
+  }
+  urlUploading.value = true
+  try {
+    const res = await resourceApi.uploadByUrl({ url })
+    const newUrl = res.resource?.url
+    emit('update:modelValue', newUrl)
+    ElMessage.success('链接图片已下载并设为封面')
+    urlDialogVisible.value = false
+    imageUrl.value = ''
+    visible.value = false
+    load(1)
+  } catch (e) {
+    ElMessage.error(String(e))
+  } finally {
+    urlUploading.value = false
   }
 }
 
@@ -140,7 +192,16 @@ function open() {
 }
 
 .resource-picker__toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
   margin-bottom: 14px;
+}
+
+.resource-picker__url-tip {
+  margin: 8px 0 0;
+  font-size: 13px;
+  color: var(--color-text-secondary, #64748b);
 }
 
 .resource-picker__grid {

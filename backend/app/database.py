@@ -100,6 +100,44 @@ def ensure_schema_compat() -> None:
                 conn.execute(text(ddl))
                 print(f"已迁移：view_history.{col} 新增成功")
 
+    # 幂等新增 articles.content_source 纯文本字段，并从已有 content 剥离 HTML 回填
+    with engine.begin() as conn:
+        exists = conn.execute(
+            text(
+                "SELECT COLUMN_NAME FROM information_schema.COLUMNS "
+                "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'articles' AND COLUMN_NAME = 'content_source'"
+            )
+        ).first()
+        if not exists:
+            conn.execute(
+                text(
+                    "ALTER TABLE articles ADD COLUMN content_source TEXT NULL "
+                    "COMMENT '正文纯文本（无HTML标签）'"
+                )
+            )
+            print("已迁移：articles.content_source 新增成功")
+
+    # 老数据回填：content_source 为空的行从 content 剥离 HTML 生成纯文本
+    from sqlalchemy import or_
+
+    from .models.article import Article
+    from .services.text_utils import strip_html
+
+    with SessionLocal() as db:
+        rows = (
+            db.query(Article.id, Article.content)
+            .filter(or_(Article.content_source.is_(None), Article.content_source == ""))
+            .all()
+        )
+        if rows:
+            for aid, content in rows:
+                db.query(Article).filter(Article.id == aid).update(
+                    {"content_source": strip_html(content)},
+                    synchronize_session=False,
+                )
+            db.commit()
+            print(f"已回填 {len(rows)} 篇文章的 content_source")
+
 
 def get_db():
     """FastAPI 依赖：每个请求一个数据库会话，请求结束自动关闭"""

@@ -15,7 +15,7 @@ from .config import settings
 from .database import Base, engine, ensure_database, ensure_schema_compat
 from .routers import (
     admin_behavior, articles, auth, categories, channels, dify, events, history, interactions, portal,
-    resources, reviews, settings as settings_router, stats, users,
+    resources, reviews, settings as settings_router, stats, users, ai_assist,
 )
 
 
@@ -66,6 +66,8 @@ api_router.include_router(history.router)
 api_router.include_router(stats.router)
 api_router.include_router(settings_router.router)
 api_router.include_router(dify.router)
+api_router.include_router(ai_assist.router)
+api_router.include_router(ai_assist.admin_router)
 app.include_router(api_router)
 
 

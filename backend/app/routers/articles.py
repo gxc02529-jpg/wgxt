@@ -22,6 +22,7 @@ from ..models.user import User
 from ..models.view_history import ViewHistory
 from ..schemas.article import ArticleIn
 from ..services.settings_service import get_setting
+from ..services.text_utils import strip_html
 
 router = APIRouter(prefix="/articles", tags=["文稿"])
 
@@ -180,6 +181,8 @@ def create_article(body: ArticleIn, db: Session = Depends(get_db), user: User = 
         title=body.title,
         summary=body.summary,
         content=body.content,
+        # 纯文本正文：前端随稿提交，缺失时后端从 HTML 剥离兜底
+        content_source=body.content_source or strip_html(body.content),
         cover_url=body.cover_url,
         author_id=user.id,
         status="draft",
@@ -206,6 +209,7 @@ def update_article(article_id: int, body: ArticleIn, db: Session = Depends(get_d
     article.title = body.title
     article.summary = body.summary
     article.content = body.content
+    article.content_source = body.content_source or strip_html(body.content)
     article.cover_url = body.cover_url
     _apply_categories(db, article, body.category_ids)
     _apply_channels(db, article, body.channel_ids)

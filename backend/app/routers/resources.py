@@ -4,6 +4,7 @@ import os
 import uuid
 from datetime import datetime
 
+import httpx
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from sqlalchemy.orm import Session
 
@@ -13,6 +14,7 @@ from ..core.pagination import paginate
 from ..database import get_db
 from ..models.resource import Resource
 from ..models.user import User
+from ..schemas.resource import ResourceUrlIn
 
 router = APIRouter(prefix="/resources", tags=["资源"])
 
@@ -21,6 +23,19 @@ ALLOWED_TYPES = {
     "image/jpeg", "image/png", "image/gif", "image/webp", "image/svg+xml",
     "video/mp4", "video/webm",
     "audio/mpeg", "application/pdf",
+}
+
+# 通过链接上传仅允许图片类型
+ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/png", "image/gif", "image/webp", "image/svg+xml"}
+
+# content-type → 文件扩展名（部分站点会返回 image/jpg 等非标准类型，统一归一化）
+CONTENT_TYPE_EXT = {
+    "image/jpeg": ".jpg",
+    "image/jpg": ".jpg",
+    "image/png": ".png",
+    "image/gif": ".gif",
+    "image/webp": ".webp",
+    "image/svg+xml": ".svg",
 }
 
 
@@ -59,6 +74,90 @@ async def upload_resource(
     db.commit()
     db.refresh(resource)
     return {"message": "上传成功", "resource": resource.to_dict()}
+
+
+@router.post("/upload-by-url", summary="通过图片链接下载并入库（仅图片）")
+async def upload_resource_by_url(
+    body: ResourceUrlIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """根据线上图片链接下载图片，保存到资源库（与本地上传走同一套存储与记录）。
+
+    注意：生产环境如开放给非可信用户，建议在此处增加内网地址/SSRF 防护
+    （例如拒绝 127.0.0.1、10.x、192.168.x 等内网段），当前演示项目仅做协议与类型限制。
+    """
+    url = body.url.strip()
+    if not url.startswith(("http://", "https://")):
+        raise HTTPException(400, "仅支持 http/https 的图片链接")
+
+    # 流式下载：限制总大小（与本地上传一致 20MB），防止下载超大文件占满磁盘
+    stored_name = ""
+    file_path = ""
+    try:
+        async with httpx.AsyncClient(follow_redirects=True, timeout=30) as client:
+            async with client.stream("GET", url) as resp:
+                if resp.status_code != 200:
+                    raise HTTPException(400, f"链接无法访问（HTTP {resp.status_code}）")
+                content_type = (resp.headers.get("content-type") or "").split(";")[0].strip().lower()
+                # 部分站点不返回 content-type，按 URL 后缀兜底判断
+                if content_type not in ALLOWED_IMAGE_TYPES:
+                    ext_from_url = os.path.splitext(url.split("?")[0])[1].lower()
+                    ext_to_type = {
+                        ".jpg": "image/jpeg",
+                        ".jpeg": "image/jpeg",
+                        ".png": "image/png",
+                        ".gif": "image/gif",
+                        ".webp": "image/webp",
+                        ".svg": "image/svg+xml",
+                    }
+                    content_type = ext_to_type.get(ext_from_url, "")
+                if content_type not in ALLOWED_IMAGE_TYPES:
+                    raise HTTPException(400, "链接内容不是支持的图片格式（jpg/png/gif/webp/svg）")
+
+                ext = CONTENT_TYPE_EXT.get(content_type, ".jpg")
+                stored_name = f"{datetime.now():%Y%m%d}_{uuid.uuid4().hex}{ext}"
+                os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
+                file_path = os.path.join(settings.UPLOAD_DIR, stored_name)
+
+                total = 0
+                with open(file_path, "wb") as f:
+                    async for chunk in resp.aiter_bytes(64 * 1024):
+                        total += len(chunk)
+                        if total > settings.MAX_UPLOAD_SIZE:
+                            raise HTTPException(400, f"图片过大，最大允许 {settings.MAX_UPLOAD_SIZE // 1024 // 1024}MB")
+                        f.write(chunk)
+                if total == 0:
+                    raise HTTPException(400, "下载内容为空")
+    except HTTPException:
+        # 下载中断时清理半成品文件
+        if file_path and os.path.exists(file_path):
+            os.remove(file_path)
+        raise
+    except httpx.TimeoutException:
+        if file_path and os.path.exists(file_path):
+            os.remove(file_path)
+        raise HTTPException(408, "下载超时，请确认链接可访问") from None
+    except httpx.RequestError as e:
+        if file_path and os.path.exists(file_path):
+            os.remove(file_path)
+        raise HTTPException(400, f"下载失败：{e}") from None
+
+    # 原始文件名优先取链接最后一段，取不到则用日期命名
+    url_path = url.split("?")[0].rstrip("/")
+    original_name = os.path.basename(url_path) or f"网络图片{datetime.now():%Y%m%d}"
+    resource = Resource(
+        user_id=user.id,
+        filename=original_name,
+        stored_name=stored_name,
+        url=f"{settings.BASE_URL}/static/{stored_name}",
+        file_type=content_type,
+        file_size=total,
+    )
+    db.add(resource)
+    db.commit()
+    db.refresh(resource)
+    return {"message": "链接图片已下载并入库", "resource": resource.to_dict()}
 
 
 @router.get("", summary="资源列表（管理员看全部，其他人看自己的）")

@@ -10,6 +10,10 @@
         <h1 class="edit-title">{{ isEdit ? '编辑文稿' : '写新文稿' }}</h1>
       </div>
       <div class="edit-toolbar__actions">
+        <el-button class="ai-assist-btn" @click="aiVisible = true">
+          <el-icon><MagicStick /></el-icon>
+          <span>AI 协作台</span>
+        </el-button>
         <el-button :loading="saving" @click="save(false)">保存草稿</el-button>
         <el-button type="primary" :loading="submitting" @click="save(true)">提交审核</el-button>
       </div>
@@ -72,13 +76,11 @@
               </div>
             </div>
           </div>
-          <el-input
+          <RichTextEditor
             v-if="!previewMode"
             v-model="form.content"
-            type="textarea"
-            :rows="18"
             class="content-editor"
-            placeholder="支持 HTML 标签，如 &lt;p&gt;段落&lt;/p&gt;、&lt;img src=&quot;资源URL&quot;&gt;"
+            @text-change="onContentChange"
           />
           <div v-else class="content-preview article-content" v-html="form.content || '<p style=&quot;color:#94a3b8&quot;>暂无内容</p>'"></div>
         </section>
@@ -137,6 +139,9 @@
         </section>
       </aside>
     </el-form>
+
+    <!-- AI 协作台：页面内部窗口，与上方 form 双向绑定 -->
+    <AIAssistDrawer v-model="aiVisible" :form="form" :categories="categories" />
   </div>
 </template>
 
@@ -144,9 +149,12 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { Back } from '@element-plus/icons-vue'
+import { Back, MagicStick } from '@element-plus/icons-vue'
 import { articleApi, categoryApi, channelApi } from '../../api'
+import AIAssistDrawer from '../../components/AIAssistDrawer.vue'
+import RichTextEditor from '../../components/RichTextEditor.vue'
 import ResourcePicker from '../../components/ResourcePicker.vue'
+import { stripHtml } from '../../utils/text'
 
 const route = useRoute()
 const router = useRouter()
@@ -157,6 +165,7 @@ const channels = ref([])
 const saving = ref(false)
 const submitting = ref(false)
 const previewMode = ref(false)
+const aiVisible = ref(false)
 
 const form = reactive({
   title: '',
@@ -165,6 +174,7 @@ const form = reactive({
   category_ids: [],
   channel_ids: [],
   content: '',
+  content_source: '',
 })
 
 const rules = {
@@ -172,17 +182,22 @@ const rules = {
   category_ids: [{ required: true, type: 'array', min: 1, message: '请至少选择一个栏目', trigger: 'change' }],
 }
 
-// 正文纯文本字数（仅展示用，不影响业务逻辑）
+// 正文纯文本字数（优先用 content_source，缺失时兜底剥离 HTML）
 const contentStats = computed(() => {
-  const text = (form.content || '').replace(/<[^>]*>/g, '').replace(/&nbsp;/g, ' ').trim()
+  const text = form.content_source?.trim() || stripHtml(form.content)
   return `正文 ${text.length} 字`
 })
+
+// 富文本编辑器纯文本回调：同步到 content_source（保存时后端也会兜底）
+function onContentChange(text) {
+  form.content_source = text
+}
 
 // 提交前检查清单（仅展示用，提交校验仍在 save() 中执行）
 const checklist = computed(() => ({
   title: Boolean(form.title.trim()),
   category: form.category_ids.length > 0,
-  content: Boolean((form.content || '').replace(/<[^>]*>/g, '').replace(/&nbsp;/g, ' ').trim()),
+  content: Boolean((form.content_source || '').trim() || stripHtml(form.content)),
 }))
 
 onMounted(async () => {
@@ -198,6 +213,7 @@ onMounted(async () => {
         summary: detail.summary,
         cover_url: detail.cover_url,
         content: detail.content || '',
+        content_source: detail.content_source || '',
         category_ids: detail.categories.map((c) => c.id),
         channel_ids: (detail.channels || []).map((c) => c.id),
       })
@@ -224,6 +240,7 @@ async function save(submitReview) {
       summary: form.summary,
       cover_url: form.cover_url,
       content: form.content,
+      content_source: form.content_source || stripHtml(form.content),
       category_ids: form.category_ids,
       channel_ids: form.channel_ids,
     }
@@ -313,6 +330,18 @@ async function save(submitReview) {
   min-height: var(--size-touch);
   padding: 0 var(--space-5);
   white-space: nowrap;
+}
+
+.ai-assist-btn {
+  color: var(--color-primary);
+  border-color: var(--color-primary);
+  background: var(--color-primary-soft);
+}
+
+.ai-assist-btn:hover {
+  color: #fff;
+  border-color: var(--color-primary);
+  background: var(--color-primary);
 }
 
 /* ---- 双栏布局 ---- */
@@ -451,14 +480,9 @@ async function save(submitReview) {
   box-shadow: var(--shadow-card);
 }
 
-/* ---- 正文编辑器 / 预览 ---- */
-.content-editor :deep(.el-textarea__inner) {
-  font-size: 15px;
-  line-height: var(--leading-loose);
-  padding: var(--space-4);
+/* ---- 正文编辑器（wangEditor） / 预览 ---- */
+.content-editor :deep(.w-e-text-container) {
   min-height: 420px;
-  color: var(--color-ink);
-  resize: vertical;
 }
 
 .content-preview {
@@ -623,7 +647,7 @@ async function save(submitReview) {
     justify-content: space-between;
   }
 
-  .content-editor :deep(.el-textarea__inner),
+  .content-editor :deep(.w-e-text-container),
   .content-preview {
     min-height: 300px;
   }

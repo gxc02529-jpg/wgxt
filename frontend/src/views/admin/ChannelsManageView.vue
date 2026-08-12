@@ -1,8 +1,23 @@
 <template>
   <div class="channels-admin">
-    <div class="page-head">
-      <h1 class="page-title">渠道管理</h1>
-      <el-button type="primary" @click="openForm()">新增渠道</el-button>
+    <div class="admin-head">
+      <span class="admin-head__icon" aria-hidden="true">
+        <el-icon><Share /></el-icon>
+      </span>
+      <div class="admin-head__text">
+        <h1 class="admin-head__title">渠道管理</h1>
+        <p class="admin-head__sub">维护文稿分发渠道，第三方平台通过 RSS 订阅获取稿件</p>
+      </div>
+      <div class="admin-head__actions">
+        <el-button type="primary" @click="openForm()">
+          <el-icon><Plus /></el-icon>
+          新增渠道
+        </el-button>
+        <el-button type="danger" plain :disabled="!selectedRows.length" @click="batchRemove">
+          <el-icon><Delete /></el-icon>
+          批量删除{{ selectedRows.length ? `（${selectedRows.length}）` : '' }}
+        </el-button>
+      </div>
     </div>
 
     <el-alert
@@ -13,39 +28,73 @@
       title="渠道用于文稿分发：第三方平台可通过每个渠道的 RSS 链接订阅最近 7 天勾选该渠道的文稿。基础渠道（门户）所有文稿默认包含且不可删除。"
     />
 
-    <el-table :data="channels" v-loading="loading">
-      <el-table-column prop="id" label="ID" width="64" />
-      <el-table-column label="名称" min-width="160">
-        <template #default="{ row }">
-          {{ row.name }}
-          <el-tag v-if="row.is_default" size="small" type="warning">基础渠道</el-tag>
-        </template>
-      </el-table-column>
-      <el-table-column prop="slug" label="标识" width="120" />
-      <el-table-column prop="description" label="简介" min-width="220" show-overflow-tooltip />
-      <el-table-column prop="article_count" label="文稿数" width="80" />
-      <el-table-column label="状态" width="90">
-        <template #default="{ row }">
-          <el-tag size="small" :type="row.status === 'active' ? 'success' : 'info'">
-            {{ row.status === 'active' ? '启用' : '停用' }}
-          </el-tag>
-        </template>
-      </el-table-column>
-      <el-table-column label="RSS 链接" min-width="240">
-        <template #default="{ row }">
-          <el-button link type="primary" @click="openRss(row)">
-            {{ channelApi.rssUrl(row.id) }}
-          </el-button>
-          <el-button link type="success" @click="copyRss(row)">复制</el-button>
-        </template>
-      </el-table-column>
-      <el-table-column label="操作" width="140" fixed="right">
-        <template #default="{ row }">
-          <el-button link type="primary" @click="openForm(row)">编辑</el-button>
-          <el-button v-if="!row.is_default" link type="danger" @click="remove(row)">删除</el-button>
-        </template>
-      </el-table-column>
-    </el-table>
+    <div class="admin-card">
+      <el-table :data="channels" v-loading="loading" style="width: 100%" @selection-change="handleSelectionChange">
+        <el-table-column type="selection" width="48" :selectable="(row) => !row.is_default" />
+        <el-table-column label="渠道" min-width="200">
+          <template #default="{ row }">
+            <div class="cell-media">
+              <span class="cell-avatar" :class="row.is_default ? 'cell-avatar--default' : ''" aria-hidden="true">
+                <el-icon v-if="row.is_default"><Star /></el-icon>
+                <template v-else>{{ row.name.slice(0, 1) }}</template>
+              </span>
+              <div class="cell-title">
+                <span class="cell-title__main">
+                  {{ row.name }}
+                  <span v-if="row.is_default" class="mini-tag mini-tag--orange">基础渠道</span>
+                </span>
+                <span class="cell-title__sub">slug: {{ row.slug }}</span>
+              </div>
+            </div>
+          </template>
+        </el-table-column>
+        <el-table-column label="简介" min-width="220" show-overflow-tooltip>
+          <template #default="{ row }">
+            <span class="cell-desc">{{ row.description || '—' }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column prop="article_count" label="文稿数" width="90" />
+        <el-table-column label="状态" width="100">
+          <template #default="{ row }">
+            <span class="status-badge" :class="row.status === 'active' ? 'status-badge--green' : 'status-badge--gray'">
+              {{ row.status === 'active' ? '启用' : '停用' }}
+            </span>
+          </template>
+        </el-table-column>
+        <el-table-column label="RSS 订阅" width="170">
+          <template #default="{ row }">
+            <div class="row-actions">
+              <el-button link type="primary" @click="openRss(row)">
+                <el-icon><Link /></el-icon>
+                打开
+              </el-button>
+              <el-button link type="success" @click="copyRss(row)">
+                <el-icon><CopyDocument /></el-icon>
+                复制
+              </el-button>
+            </div>
+          </template>
+        </el-table-column>
+        <el-table-column label="操作" width="150" fixed="right">
+          <template #default="{ row }">
+            <div class="row-actions">
+              <el-button link type="primary" @click="openForm(row)">
+                <el-icon><EditPen /></el-icon>
+                编辑
+              </el-button>
+              <el-button v-if="!row.is_default" link type="danger" @click="remove(row)">
+                <el-icon><Delete /></el-icon>
+                删除
+              </el-button>
+            </div>
+          </template>
+        </el-table-column>
+      </el-table>
+
+      <div class="admin-pager">
+        <span class="admin-pager__info">共 <strong>{{ channels.length }}</strong> 个渠道</span>
+      </div>
+    </div>
 
     <el-dialog v-model="dialogVisible" :title="editing ? '编辑渠道' : '新增渠道'" width="480px">
       <el-form ref="formRef" :model="form" :rules="rules" label-position="top">
@@ -79,6 +128,7 @@
 <script setup>
 import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { CopyDocument, Delete, EditPen, Link, Plus, Share, Star } from '@element-plus/icons-vue'
 import { channelApi } from '../../api'
 
 const channels = ref([])
@@ -89,6 +139,7 @@ const saving = ref(false)
 const formRef = ref()
 const form = reactive({ name: '', slug: '', description: '', sort_order: 0, status: 'active' })
 const isDefaultEditing = computed(() => Boolean(editing.value?.is_default))
+const selectedRows = ref([])
 const rules = {
   name: [{ required: true, message: '请输入渠道名称', trigger: 'blur' }],
   slug: [
@@ -156,6 +207,40 @@ async function remove(row) {
   }
 }
 
+function handleSelectionChange(rows) {
+  selectedRows.value = rows
+}
+
+async function batchRemove() {
+  if (!selectedRows.value.length) return
+  try {
+    await ElMessageBox.confirm(
+      `确定删除选中的 ${selectedRows.value.length} 个渠道？删除后将解除与文稿的关联。`,
+      '批量删除确认',
+      { type: 'warning' },
+    )
+  } catch {
+    return
+  }
+  let ok = 0
+  let fail = 0
+  for (const row of selectedRows.value) {
+    try {
+      await channelApi.remove(row.id)
+      ok++
+    } catch {
+      fail++
+    }
+  }
+  selectedRows.value = []
+  if (fail) {
+    ElMessage.warning(`已删除 ${ok} 个，失败 ${fail} 个`)
+  } else {
+    ElMessage.success(`已删除 ${ok} 个渠道`)
+  }
+  load()
+}
+
 function copyRss(row) {
   const url = channelApi.rssUrl(row.id)
   navigator.clipboard
@@ -172,18 +257,31 @@ onMounted(load)
 </script>
 
 <style scoped>
-.page-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 16px;
-}
-
-.page-title {
-  font-size: 24px;
-}
-
 .channels-tip {
   margin-bottom: 16px;
+}
+
+.cell-desc {
+  color: var(--color-text-secondary);
+  font-size: 13px;
+}
+
+.cell-avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+  border-radius: 10px;
+  background: var(--color-primary-soft);
+  color: var(--color-primary);
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.cell-avatar--default {
+  background: #ffedd5;
+  color: #c2410c;
 }
 </style>

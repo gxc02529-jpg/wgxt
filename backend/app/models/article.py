@@ -29,6 +29,7 @@ class Article(Base):
     author_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True, comment="作者（编辑）ID")
     summary = Column(String(500), comment="摘要")
     content = Column(Text, comment="正文（HTML）")
+    content_source = Column(Text, comment="正文纯文本（无 HTML 标签，供搜索/AI/字数统计使用）")
     cover_url = Column(String(255), comment="封面图URL（来自资源管理）")
 
     # 审核状态机：draft 草稿 → pending_first 待一审 → pending_second 待二审
@@ -83,6 +84,7 @@ class Article(Base):
         }
         if include_content:
             data["content"] = self.content
+            data["content_source"] = self.content_source or ""
         if include_reviews:
             data["reviews"] = [
                 {

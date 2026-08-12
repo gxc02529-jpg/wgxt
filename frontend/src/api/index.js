@@ -88,6 +88,8 @@ export const resourceApi = {
       headers: { 'Content-Type': 'multipart/form-data' },
       timeout: 60000,
     }),
+  // 通过线上图片链接下载入库（后端流式下载，限制大小与图片类型）
+  uploadByUrl: (data) => client.post('/resources/upload-by-url', data, { timeout: 60000 }),
   list: (params) => client.get('/resources', { params }),
   remove: (id) => client.delete(`/resources/${id}`),
 }
@@ -139,4 +141,18 @@ export const difyApi = {
   update: (id, data) => client.put(`/dify/workflows/${id}`, data),
   remove: (id) => client.delete(`/dify/workflows/${id}`),
   run: (id, data) => client.post(`/dify/workflows/${id}/run`, data),
+}
+
+// ---- AI 协作台（写稿页 AI 辅助功能，后端当前为占位实现）----
+export const aiAssistApi = {
+  classify: (data) => client.post('/ai/assist/classify', data),
+  summary: (data) => client.post('/ai/assist/summary', data),
+  review: (data) => client.post('/ai/assist/review', data),
+  check: (data) => client.post('/ai/assist/check', data),
+  score: (data) => client.post('/ai/assist/score', data),
+}
+
+// ---- 后台 AI 调用记录（管理员）----
+export const aiLogApi = {
+  list: (params) => client.get('/admin/ai-calls', { params }),
 }

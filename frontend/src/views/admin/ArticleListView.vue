@@ -1,58 +1,119 @@
 <template>
   <div class="article-admin">
-    <div class="page-head">
-      <h1 class="page-title">文稿管理</h1>
-      <el-button type="primary" @click="router.push('/admin/articles/new')">
-        写新文稿
-      </el-button>
+    <div class="admin-head">
+      <span class="admin-head__icon" aria-hidden="true">
+        <el-icon><Document /></el-icon>
+      </span>
+      <div class="admin-head__text">
+        <h1 class="admin-head__title">文稿管理</h1>
+        <p class="admin-head__sub">管理全站文稿的编写、审核与发布状态</p>
+      </div>
+      <div class="admin-head__actions">
+        <el-button type="primary" @click="router.push('/admin/articles/new')">
+          <el-icon><EditPen /></el-icon>
+          写新文稿
+        </el-button>
+        <el-button type="danger" plain :disabled="!selectedRows.length" @click="batchRemove">
+          <el-icon><Delete /></el-icon>
+          批量删除{{ selectedRows.length ? `（${selectedRows.length}）` : '' }}
+        </el-button>
+      </div>
     </div>
 
-    <!-- 筛选栏 -->
-    <div class="filters">
-      <el-input v-model="filters.keyword" placeholder="标题关键词" clearable style="width: 220px" @keyup.enter="reload" />
-      <el-select v-model="filters.status" placeholder="全部状态" clearable style="width: 150px" @change="reload">
-        <el-option v-for="(label, value) in statusMap" :key="value" :label="label" :value="value" />
-      </el-select>
-      <el-button @click="reload">查询</el-button>
-    </div>
+    <div class="admin-card">
+      <!-- 筛选栏 -->
+      <div class="admin-card__toolbar">
+        <el-input
+          v-model="filters.keyword"
+          placeholder="标题关键词"
+          clearable
+          style="width: 240px"
+          @keyup.enter="reload"
+        />
+        <el-select v-model="filters.status" placeholder="全部状态" clearable style="width: 150px" @change="reload">
+          <el-option v-for="(label, value) in statusMap" :key="value" :label="label" :value="value" />
+        </el-select>
+        <el-button @click="reload">
+          <el-icon><Search /></el-icon>
+          查询
+        </el-button>
+      </div>
 
-    <el-table :data="articles" v-loading="loading" style="width: 100%">
-      <el-table-column prop="id" label="ID" width="64" />
-      <el-table-column prop="title" label="标题" min-width="220" show-overflow-tooltip />
-      <el-table-column label="栏目" width="150">
-        <template #default="{ row }">
-          <el-tag v-for="c in row.categories" :key="c.id" size="small" class="mr-2">{{ c.name }}</el-tag>
-        </template>
-      </el-table-column>
-      <el-table-column prop="author_name" label="作者" width="110" />
-      <el-table-column label="状态" width="100">
-        <template #default="{ row }">
-          <el-tag :type="statusTagType(row.status)" size="small">{{ statusMap[row.status] || row.status }}</el-tag>
-        </template>
-      </el-table-column>
-      <el-table-column prop="view_count" label="浏览" width="80" />
-      <el-table-column prop="like_count" label="点赞" width="80" />
-      <el-table-column prop="favorite_count" label="收藏" width="80" />
-      <el-table-column prop="share_count" label="转发" width="80" />
-      <el-table-column prop="updated_at" label="更新时间" width="160" />
-      <el-table-column label="操作" width="250" fixed="right">
-        <template #default="{ row }">
-          <el-button v-if="isEditable(row)" link type="primary" @click="router.push(`/admin/articles/${row.id}/edit`)">编辑</el-button>
-          <el-button v-if="canSubmit(row)" link type="warning" @click="submit(row)">提交审核</el-button>
-          <el-button v-if="isAdmin && row.status === 'published'" link type="info" @click="offline(row)">下线</el-button>
-          <el-button v-if="canDelete(row)" link type="danger" @click="remove(row)">删除</el-button>
-        </template>
-      </el-table-column>
-    </el-table>
+      <el-table :data="articles" v-loading="loading" style="width: 100%" @selection-change="handleSelectionChange">
+        <el-table-column type="selection" width="48" :selectable="isSelectable" />
+        <el-table-column label="文稿" min-width="280">
+          <template #default="{ row }">
+            <div class="cell-media">
+              <img v-if="row.cover_url" :src="row.cover_url" :alt="row.title" class="cell-thumb" loading="lazy" />
+              <span v-else class="cell-thumb cell-thumb--empty">
+                {{ (row.categories[0]?.name || '文').slice(0, 1) }}
+              </span>
+              <div class="cell-title">
+                <span class="cell-title__main" :title="row.title">{{ row.title }}</span>
+                <span class="cell-title__sub">#{{ row.id }} · {{ row.author_name }} · {{ row.updated_at }}</span>
+              </div>
+            </div>
+          </template>
+        </el-table-column>
+        <el-table-column label="栏目" width="170">
+          <template #default="{ row }">
+            <div class="tag-list">
+              <span v-for="c in row.categories" :key="c.id" class="mini-tag">{{ c.name }}</span>
+              <span v-if="!row.categories.length" class="mini-tag mini-tag--empty">未分类</span>
+            </div>
+          </template>
+        </el-table-column>
+        <el-table-column label="状态" width="110">
+          <template #default="{ row }">
+            <span class="status-badge" :class="statusBadgeClass(row.status)">
+              {{ statusMap[row.status] || row.status }}
+            </span>
+          </template>
+        </el-table-column>
+        <el-table-column label="数据" width="210">
+          <template #default="{ row }">
+            <div class="stat-line">
+              <span class="stat-line__item"><el-icon><View /></el-icon>{{ row.view_count }} 浏览</span>
+              <span class="stat-line__item">点赞 {{ row.like_count }}</span>
+              <span class="stat-line__item">收藏 {{ row.favorite_count }}</span>
+              <span class="stat-line__item">转发 {{ row.share_count }}</span>
+            </div>
+          </template>
+        </el-table-column>
+        <el-table-column label="操作" width="250" fixed="right">
+          <template #default="{ row }">
+            <div class="row-actions">
+              <el-button v-if="isEditable(row)" link type="primary" @click="router.push(`/admin/articles/${row.id}/edit`)">
+                <el-icon><EditPen /></el-icon>
+                编辑
+              </el-button>
+              <el-button v-if="canSubmit(row)" link type="warning" @click="submit(row)">
+                <el-icon><Promotion /></el-icon>
+                提交审核
+              </el-button>
+              <el-button v-if="isAdmin && row.status === 'published'" link type="info" @click="offline(row)">
+                <el-icon><SwitchButton /></el-icon>
+                下线
+              </el-button>
+              <el-button v-if="canDelete(row)" link type="danger" @click="remove(row)">
+                <el-icon><Delete /></el-icon>
+                删除
+              </el-button>
+            </div>
+          </template>
+        </el-table-column>
+      </el-table>
 
-    <div class="pager">
-      <el-pagination
-        layout="total, prev, pager, next"
-        :total="total"
-        :page-size="pageSize"
-        :current-page="page"
-        @current-change="changePage"
-      />
+      <div class="admin-pager">
+        <span class="admin-pager__info">共 <strong>{{ total }}</strong> 篇文稿</span>
+        <el-pagination
+          layout="total, prev, pager, next"
+          :total="total"
+          :page-size="pageSize"
+          :current-page="page"
+          @current-change="changePage"
+        />
+      </div>
     </div>
   </div>
 </template>
@@ -61,6 +122,9 @@
 import { onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import {
+  Delete, Document, EditPen, Promotion, Search, SwitchButton, View,
+} from '@element-plus/icons-vue'
 import { articleApi } from '../../api'
 import { useAuthStore } from '../../stores/auth'
 
@@ -83,16 +147,17 @@ const page = ref(1)
 const pageSize = 10
 const loading = ref(false)
 const filters = reactive({ keyword: '', status: '' })
+const selectedRows = ref([])
 
-function statusTagType(s) {
+function statusBadgeClass(s) {
   return {
-    draft: 'info',
-    pending_first: 'warning',
-    pending_second: 'danger',
-    published: 'success',
-    rejected: 'danger',
-    offline: 'info',
-  }[s] || 'info'
+    draft: 'status-badge--gray',
+    pending_first: 'status-badge--orange',
+    pending_second: 'status-badge--red',
+    published: 'status-badge--green',
+    rejected: 'status-badge--red',
+    offline: 'status-badge--gray',
+  }[s] || 'status-badge--gray'
 }
 
 function isEditable(row) {
@@ -105,6 +170,15 @@ function canSubmit(row) {
 
 function canDelete(row) {
   return isAdmin || row.author_id === auth.user?.id
+}
+
+// 仅可删除的文稿行允许勾选（管理员或作者本人）
+function isSelectable(row) {
+  return canDelete(row)
+}
+
+function handleSelectionChange(rows) {
+  selectedRows.value = rows
 }
 
 async function load() {
@@ -162,35 +236,39 @@ async function remove(row) {
   }
 }
 
+async function batchRemove() {
+  if (!selectedRows.value.length) return
+  try {
+    await ElMessageBox.confirm(
+      `确定删除选中的 ${selectedRows.value.length} 篇文稿？删除后不可恢复。`,
+      '批量删除确认',
+      { type: 'warning' },
+    )
+  } catch {
+    return
+  }
+  let ok = 0
+  let fail = 0
+  for (const row of selectedRows.value) {
+    try {
+      await articleApi.remove(row.id)
+      ok++
+    } catch {
+      fail++
+    }
+  }
+  selectedRows.value = []
+  if (fail) {
+    ElMessage.warning(`已删除 ${ok} 篇，失败 ${fail} 篇`)
+  } else {
+    ElMessage.success(`已删除 ${ok} 篇文稿`)
+  }
+  load()
+}
+
 onMounted(load)
 </script>
 
 <style scoped>
-.page-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 16px;
-}
-
-.page-title {
-  font-size: 24px;
-}
-
-.filters {
-  display: flex;
-  gap: 10px;
-  margin-bottom: 16px;
-}
-
-.pager {
-  display: flex;
-  justify-content: flex-end;
-  margin-top: 16px;
-}
-
-.mr-2 {
-  margin-right: 6px;
-}
 </style>
 

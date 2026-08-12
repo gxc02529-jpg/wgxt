@@ -8,21 +8,90 @@
         <h2>首页轮播图</h2>
         <el-switch v-model="bannerModule.enabled" active-text="启用" @change="saveModule('banner')" />
       </div>
-      <p class="panel__tip">配置展示在首页顶部的轮播，图片建议 16:9，可填写文章详情页链接。</p>
+      <p class="panel__tip">从已发布文稿中选取展示在首页顶部的轮播图（仅带封面的文稿可选），顺序即展示顺序。</p>
 
       <div class="banner-editor">
-        <div v-for="(slide, i) in bannerSlides" :key="i" class="banner-editor__row">
-          <el-input v-model="slide.title" placeholder="轮播标题" style="width: 200px" />
-          <el-input v-model="slide.image" placeholder="图片 URL" style="flex: 1" />
-          <el-input v-model="slide.link" placeholder="链接（如 /article/1）" style="width: 200px" />
+        <div v-for="(slide, i) in bannerSlides" :key="slide.article_id || i" class="banner-editor__row">
+          <img v-if="slide.image" :src="slide.image" :alt="slide.title" class="banner-editor__thumb" />
+          <span v-else class="banner-editor__thumb banner-editor__thumb--empty">无图</span>
+          <div class="banner-editor__info">
+            <span class="banner-editor__title">{{ slide.title }}</span>
+            <span class="banner-editor__link">{{ slide.link }}</span>
+          </div>
           <el-button type="danger" plain @click="removeSlide(i)">移除</el-button>
         </div>
-        <el-button type="primary" plain @click="addSlide">添加一张轮播</el-button>
+        <el-empty
+          v-if="!bannerSlides.length"
+          description="尚未配置轮播，点击下方按钮从文稿中选取"
+          :image-size="60"
+        />
+        <div class="banner-editor__actions">
+          <el-button type="primary" @click="openArticlePicker">
+            <el-icon><Document /></el-icon>
+            从文稿中选取
+          </el-button>
+        </div>
       </div>
       <div class="panel__actions">
         <el-button type="primary" :loading="savingBanner" @click="saveModule('banner')">保存轮播配置</el-button>
       </div>
     </section>
+
+    <!-- 选择轮播文稿弹窗 -->
+    <el-dialog v-model="pickerVisible" title="选择轮播文稿" width="760px" top="6vh" append-to-body>
+      <div class="picker__toolbar">
+        <el-input
+          v-model="pickerKeyword"
+          placeholder="搜索文稿标题"
+          clearable
+          style="width: 240px"
+          @keyup.enter="loadPicker(1)"
+          @clear="loadPicker(1)"
+        />
+        <el-button type="primary" @click="loadPicker(1)">搜索</el-button>
+        <el-button
+          type="success"
+          :disabled="!pickedArticles.length"
+          @click="confirmPick"
+        >
+          添加选中（{{ pickedArticles.length }}）
+        </el-button>
+      </div>
+
+      <div v-loading="pickerLoading" class="picker__grid">
+        <label
+          v-for="a in pickerArticles"
+          :key="a.id"
+          class="picker__item"
+          :class="{ 'is-picked': pickedArticles.some((p) => p.id === a.id), 'is-disabled': !a.cover_url }"
+        >
+          <input
+            type="checkbox"
+            class="picker__checkbox"
+            :checked="pickedArticles.some((p) => p.id === a.id)"
+            :disabled="!a.cover_url"
+            @change="togglePick(a, $event.target.checked)"
+          />
+          <img v-if="a.cover_url" :src="a.cover_url" :alt="a.title" loading="lazy" class="picker__thumb" />
+          <span v-else class="picker__thumb picker__thumb--empty">无封面</span>
+          <div class="picker__meta">
+            <span class="picker__title">{{ a.title }}</span>
+            <span class="picker__tag">{{ a.categories[0]?.name || '未分类' }}</span>
+          </div>
+        </label>
+        <el-empty v-if="!pickerLoading && !pickerArticles.length" description="暂无已发布文稿" />
+      </div>
+
+      <div class="picker__pager">
+        <el-pagination
+          layout="total, prev, pager, next"
+          :total="pickerTotal"
+          :page-size="pickerPageSize"
+          :current-page="pickerPage"
+          @current-change="loadPicker"
+        />
+      </div>
+    </el-dialog>
 
     <!-- 站内公告 -->
     <section class="panel">
@@ -48,7 +117,8 @@
 <script setup>
 import { onMounted, ref } from 'vue'
 import { ElMessage } from 'element-plus'
-import { portalApi } from '../../api'
+import { Document } from '@element-plus/icons-vue'
+import { articleApi, portalApi } from '../../api'
 
 const bannerModule = ref({ module_key: 'banner', title: '', content: [], enabled: true })
 const noticeModule = ref({ module_key: 'notice', title: '', content: '', enabled: true })
@@ -56,6 +126,15 @@ const bannerSlides = ref([])
 const noticeText = ref('')
 const savingBanner = ref(false)
 const savingNotice = ref(false)
+// 文稿选取弹窗
+const pickerVisible = ref(false)
+const pickerKeyword = ref('')
+const pickerArticles = ref([])
+const pickerTotal = ref(0)
+const pickerPage = ref(1)
+const pickerPageSize = 12
+const pickerLoading = ref(false)
+const pickedArticles = ref([])
 
 onMounted(async () => {
   try {
@@ -75,12 +154,62 @@ onMounted(async () => {
   }
 })
 
-function addSlide() {
-  bannerSlides.value.push({ title: '', image: '', link: '' })
-}
-
 function removeSlide(i) {
   bannerSlides.value.splice(i, 1)
+}
+
+async function openArticlePicker() {
+  pickerVisible.value = true
+  pickedArticles.value = []
+  loadPicker(1)
+}
+
+async function loadPicker(p) {
+  if (p) pickerPage.value = p
+  pickerLoading.value = true
+  try {
+    const res = await articleApi.list({
+      keyword: pickerKeyword.value || undefined,
+      page: pickerPage.value,
+      page_size: pickerPageSize,
+    })
+    pickerArticles.value = res.items
+    pickerTotal.value = res.total
+  } catch (e) {
+    ElMessage.error(String(e))
+  } finally {
+    pickerLoading.value = false
+  }
+}
+
+function togglePick(article, checked) {
+  if (checked) {
+    pickedArticles.value.push(article)
+  } else {
+    pickedArticles.value = pickedArticles.value.filter((p) => p.id !== article.id)
+  }
+}
+
+function confirmPick() {
+  const existing = new Set(bannerSlides.value.map((s) => s.article_id).filter(Boolean))
+  let added = 0
+  for (const a of pickedArticles.value) {
+    if (existing.has(a.id)) continue
+    bannerSlides.value.push({
+      article_id: a.id,
+      title: a.title,
+      image: a.cover_url,
+      link: `/article/${a.id}`,
+    })
+    existing.add(a.id)
+    added++
+  }
+  if (added) {
+    ElMessage.success(`已添加 ${added} 张轮播`)
+  } else {
+    ElMessage.info('所选文稿已在轮播中')
+  }
+  pickerVisible.value = false
 }
 
 async function saveModule(key) {
@@ -155,7 +284,157 @@ async function saveModule(key) {
 
 .banner-editor__row {
   display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg);
+}
+
+.banner-editor__thumb {
+  width: 120px;
+  height: 68px;
+  object-fit: cover;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-border);
+  flex-shrink: 0;
+}
+
+.banner-editor__thumb--empty {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--color-paper-2);
+  color: var(--color-text-muted);
+  font-size: 12px;
+}
+
+.banner-editor__info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  flex: 1;
+}
+
+.banner-editor__title {
+  min-width: 0;
+  font-weight: 600;
+  color: var(--color-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.banner-editor__link {
+  min-width: 0;
+  font-size: 12px;
+  color: var(--color-text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.banner-editor__actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+/* ---- 文稿选取弹窗 ---- */
+.picker__toolbar {
+  display: flex;
+  align-items: center;
   gap: 10px;
+  margin-bottom: 14px;
+}
+
+.picker__grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+  min-height: 140px;
+}
+
+.picker__item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  min-width: 0;
+  border: 2px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: border-color 150ms cubic-bezier(0.16, 1, 0.3, 1),
+    background-color 150ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.picker__item:hover {
+  border-color: var(--color-primary);
+}
+
+.picker__item.is-picked {
+  border-color: var(--color-primary);
+  background: var(--color-primary-soft);
+}
+
+.picker__item.is-disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.picker__checkbox {
+  flex-shrink: 0;
+}
+
+.picker__thumb {
+  width: 96px;
+  height: 54px;
+  object-fit: cover;
+  border-radius: 4px;
+  border: 1px solid var(--color-border);
+  flex-shrink: 0;
+}
+
+.picker__thumb--empty {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--color-paper-2);
+  color: var(--color-text-muted);
+  font-size: 12px;
+}
+
+.picker__meta {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.picker__title {
+  min-width: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.picker__tag {
+  min-width: 0;
+  font-size: 12px;
+  color: var(--color-text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.picker__pager {
+  display: flex;
+  justify-content: center;
+  margin-top: 14px;
 }
 
 .panel__actions {

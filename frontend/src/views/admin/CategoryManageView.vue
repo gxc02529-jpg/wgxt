@@ -1,31 +1,79 @@
 <template>
   <div class="category-admin">
-    <div class="page-head">
-      <h1 class="page-title">栏目管理</h1>
-      <el-button type="primary" @click="openForm()">新增栏目</el-button>
+    <div class="admin-head">
+      <span class="admin-head__icon" aria-hidden="true">
+        <el-icon><FolderOpened /></el-icon>
+      </span>
+      <div class="admin-head__text">
+        <h1 class="admin-head__title">栏目管理</h1>
+        <p class="admin-head__sub">维护门户内容分类，管理栏目显示状态与排序</p>
+      </div>
+      <div class="admin-head__actions">
+        <el-button type="primary" @click="openForm()">
+          <el-icon><Plus /></el-icon>
+          新增栏目
+        </el-button>
+        <el-button type="danger" plain :disabled="!selectedRows.length" @click="batchRemove">
+          <el-icon><Delete /></el-icon>
+          批量删除{{ selectedRows.length ? `（${selectedRows.length}）` : '' }}
+        </el-button>
+      </div>
     </div>
 
-    <el-table :data="categories" v-loading="loading">
-      <el-table-column prop="id" label="ID" width="64" />
-      <el-table-column prop="name" label="名称" width="140" />
-      <el-table-column prop="slug" label="标识" width="140" />
-      <el-table-column prop="description" label="简介" min-width="240" show-overflow-tooltip />
-      <el-table-column prop="sort_order" label="排序" width="80" />
-      <el-table-column prop="article_count" label="文稿数" width="90" />
-      <el-table-column label="状态" width="90">
-        <template #default="{ row }">
-          <el-tag size="small" :type="row.status === 'active' ? 'success' : 'info'">
-            {{ row.status === 'active' ? '启用' : '隐藏' }}
-          </el-tag>
-        </template>
-      </el-table-column>
-      <el-table-column label="操作" width="140" fixed="right">
-        <template #default="{ row }">
-          <el-button link type="primary" @click="openForm(row)">编辑</el-button>
-          <el-button link type="danger" @click="remove(row)">删除</el-button>
-        </template>
-      </el-table-column>
-    </el-table>
+    <div class="admin-card">
+      <el-table :data="categories" v-loading="loading" style="width: 100%" @selection-change="handleSelectionChange">
+        <el-table-column type="selection" width="48" />
+        <el-table-column label="栏目" min-width="220">
+          <template #default="{ row }">
+            <div class="cell-media">
+              <span class="cell-avatar" :style="{ background: avatarColor(row.id) }" aria-hidden="true">
+                {{ row.name.slice(0, 1) }}
+              </span>
+              <div class="cell-title">
+                <span class="cell-title__main">{{ row.name }}</span>
+                <span class="cell-title__sub">slug: {{ row.slug }}</span>
+              </div>
+            </div>
+          </template>
+        </el-table-column>
+        <el-table-column prop="description" label="简介" min-width="260" show-overflow-tooltip>
+          <template #default="{ row }">
+            <span class="cell-desc">{{ row.description || '—' }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column prop="sort_order" label="排序" width="80" />
+        <el-table-column prop="article_count" label="文稿数" width="90">
+          <template #default="{ row }">
+            <span class="stat-line__item">{{ row.article_count }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="状态" width="100">
+          <template #default="{ row }">
+            <span class="status-badge" :class="row.status === 'active' ? 'status-badge--green' : 'status-badge--gray'">
+              {{ row.status === 'active' ? '启用' : '隐藏' }}
+            </span>
+          </template>
+        </el-table-column>
+        <el-table-column label="操作" width="150" fixed="right">
+          <template #default="{ row }">
+            <div class="row-actions">
+              <el-button link type="primary" @click="openForm(row)">
+                <el-icon><EditPen /></el-icon>
+                编辑
+              </el-button>
+              <el-button link type="danger" @click="remove(row)">
+                <el-icon><Delete /></el-icon>
+                删除
+              </el-button>
+            </div>
+          </template>
+        </el-table-column>
+      </el-table>
+
+      <div class="admin-pager">
+        <span class="admin-pager__info">共 <strong>{{ categories.length }}</strong> 个栏目</span>
+      </div>
+    </div>
 
     <el-dialog v-model="dialogVisible" :title="editing ? '编辑栏目' : '新增栏目'" width="480px">
       <el-form ref="formRef" :model="form" :rules="rules" label-position="top">
@@ -59,6 +107,7 @@
 <script setup>
 import { onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { Delete, EditPen, FolderOpened, Plus } from '@element-plus/icons-vue'
 import { categoryApi } from '../../api'
 
 const categories = ref([])
@@ -68,6 +117,14 @@ const editing = ref(null)
 const saving = ref(false)
 const formRef = ref()
 const form = reactive({ name: '', slug: '', description: '', sort_order: 0, status: 'active' })
+const selectedRows = ref([])
+
+// 栏目头像色：按 id 取一组柔和色中的固定色，保证同一栏目颜色稳定
+const AVATAR_COLORS = ['#2563eb', '#7c3aed', '#0891b2', '#c2410c', '#16a34a', '#db2777', '#4f46e5', '#0d9488']
+
+function avatarColor(id) {
+  return AVATAR_COLORS[Number(id) % AVATAR_COLORS.length]
+}
 const rules = {
   name: [{ required: true, message: '请输入栏目名称', trigger: 'blur' }],
   slug: [
@@ -131,19 +188,60 @@ async function remove(row) {
   }
 }
 
+function handleSelectionChange(rows) {
+  selectedRows.value = rows
+}
+
+async function batchRemove() {
+  if (!selectedRows.value.length) return
+  try {
+    await ElMessageBox.confirm(
+      `确定删除选中的 ${selectedRows.value.length} 个栏目？该栏目下的文稿关联将被解除。`,
+      '批量删除确认',
+      { type: 'warning' },
+    )
+  } catch {
+    return
+  }
+  let ok = 0
+  let fail = 0
+  for (const row of selectedRows.value) {
+    try {
+      await categoryApi.remove(row.id)
+      ok++
+    } catch {
+      fail++
+    }
+  }
+  selectedRows.value = []
+  if (fail) {
+    ElMessage.warning(`已删除 ${ok} 个，失败 ${fail} 个`)
+  } else {
+    ElMessage.success(`已删除 ${ok} 个栏目`)
+  }
+  load()
+}
+
 onMounted(load)
 </script>
 
 <style scoped>
-.page-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 16px;
+.cell-desc {
+  color: var(--color-text-secondary);
+  font-size: 13px;
 }
 
-.page-title {
-  font-size: 24px;
+.cell-avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+  border-radius: 10px;
+  color: #fff;
+  font-size: 16px;
+  font-weight: 700;
 }
 </style>
 
