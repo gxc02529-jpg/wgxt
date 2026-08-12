@@ -104,7 +104,7 @@
 </template>
 
 <script setup>
-import { onBeforeUnmount, onMounted, ref } from 'vue'
+import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { articleApi, eventApi, historyApi, interactionApi } from '../../api'
@@ -123,8 +123,17 @@ const disliked = ref(false)
 const watchStart = ref(Date.now())
 const durationReported = ref(false)
 
-onMounted(async () => {
-  const id = Number(route.params.id)
+// 加载文章数据（首屏与相关推荐切换时都会调用）
+async function loadArticle(id) {
+  // 切换文章前，先上报上一篇文章的观看时长
+  reportWatchDuration()
+  loading.value = true
+  article.value = null
+  related.value = []
+  liked.value = false
+  favorited.value = false
+  disliked.value = false
+  durationReported.value = false
   try {
     const [detail, statusRes] = await Promise.all([
       articleApi.detail(id),
@@ -143,13 +152,25 @@ onMounted(async () => {
     // 相关推荐：同栏目已发布文稿（后端按发布时间新到旧返回）
     const res = await articleApi.related(id, { limit: 6 })
     related.value = res.items
+    // 先移除再添加，避免多次切换文章时重复绑定
+    window.removeEventListener('pagehide', onPageHide)
     window.addEventListener('pagehide', onPageHide)
   } catch (e) {
     ElMessage.error(String(e))
   } finally {
     loading.value = false
   }
+}
+
+onMounted(() => {
+  loadArticle(Number(route.params.id))
 })
+
+// 相关推荐/同路由跳转：监听文章 id 变化，重新加载对应文章
+watch(
+  () => route.params.id,
+  (val) => loadArticle(Number(val)),
+)
 
 onBeforeUnmount(() => {
   reportWatchDuration()
