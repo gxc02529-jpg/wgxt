@@ -121,12 +121,16 @@ def admin_articles(
     return {"items": [a.to_dict() for a in rows], "total": total, "page": page, "page_size": page_size}
 
 
-@router.get("/{article_id}", summary="文稿详情（未发布稿仅作者/管理员可见）")
+@router.get("/{article_id}", summary="文稿详情（未发布稿仅作者/系统管理员/审核管理员可见）")
 def get_article(article_id: int, db: Session = Depends(get_db), user: User | None = Depends(get_optional_user)):
     article = db.get(Article, article_id)
     if not article:
         raise HTTPException(404, "文稿不存在")
-    if article.status != "published" and not _can_manage(article, user):
+    # 未发布文稿仅作者、系统管理员、审核管理员（moderator）可见：
+    # 审核人需要读取待审/待二审稿件的正文内容，否则无法执行审核
+    if article.status != "published" and not (
+        _can_manage(article, user) or (user is not None and user.role in ("admin", "moderator"))
+    ):
         raise HTTPException(403, "该文稿尚未发布")
     # 记录观看历史：登录用户浏览已发布文稿时写入/更新 view_history
     # （同一文稿重复观看仅更新时间，历史列表按最近观看时间倒序）
