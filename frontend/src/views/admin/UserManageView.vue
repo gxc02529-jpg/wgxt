@@ -10,7 +10,8 @@
       <el-select v-model="filters.role" placeholder="全部角色" clearable style="width: 130px" @change="reload">
         <el-option label="普通用户" value="user" />
         <el-option label="编辑" value="editor" />
-        <el-option label="管理员" value="admin" />
+        <el-option label="管理员" value="moderator" />
+        <el-option label="系统管理员" value="admin" />
       </el-select>
       <el-select v-model="filters.status" placeholder="全部状态" clearable style="width: 130px" @change="reload">
         <el-option label="正常" value="active" />
@@ -35,7 +36,7 @@
       <el-table-column prop="email" label="邮箱" width="180" />
       <el-table-column label="角色" width="100">
         <template #default="{ row }">
-          <el-tag size="small" :type="row.role === 'admin' ? 'danger' : row.role === 'editor' ? 'warning' : 'info'">
+          <el-tag size="small" :type="roleTagType[row.role]">
             {{ roleLabel[row.role] }}
           </el-tag>
         </template>
@@ -87,7 +88,8 @@
           <el-select v-model="form.role" style="width: 100%">
             <el-option label="普通用户" value="user" />
             <el-option label="编辑" value="editor" />
-            <el-option label="管理员" value="admin" />
+            <el-option label="管理员" value="moderator" />
+            <el-option label="系统管理员" value="admin" />
           </el-select>
         </el-form-item>
         <el-form-item v-if="editing" label="状态">
@@ -110,7 +112,8 @@ import { onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { userApi } from '../../api'
 
-const roleLabel = { user: '普通用户', editor: '编辑', admin: '管理员' }
+const roleLabel = { user: '普通用户', editor: '编辑', moderator: '管理员', admin: '系统管理员' }
+const roleTagType = { user: 'info', editor: 'warning', moderator: 'primary', admin: 'danger' }
 const users = ref([])
 const total = ref(0)
 const page = ref(1)
@@ -210,7 +213,11 @@ async function toggleFreeze(row) {
 
 async function remove(row) {
   try {
-    await ElMessageBox.confirm(`确定删除用户「${row.username}」？`, '删除确认', { type: 'warning' })
+    await ElMessageBox.confirm(
+      `确定删除用户「${row.username}」？其创建的文稿将一并删除，上传的资源会转移给系统管理员，此操作不可恢复。`,
+      '删除确认',
+      { type: 'warning' },
+    )
     await userApi.remove(row.id)
     ElMessage.success('已删除')
     load()

@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""二级审核接口（管理员）：待审列表、审核操作、审核记录"""
+"""二级审核接口（系统管理员 / 审核管理员 moderator）：待审列表、审核操作、审核记录"""
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -23,7 +23,7 @@ def pending_reviews(
     page: int = 1,
     page_size: int = 10,
     db: Session = Depends(get_db),
-    admin: User = Depends(require_roles("admin")),
+    admin: User = Depends(require_roles("admin", "moderator")),
 ):
     status = "pending_first" if level == 1 else "pending_second"
     query = db.query(Article).filter(Article.status == status).order_by(Article.updated_at.desc())
@@ -37,7 +37,7 @@ def review_history(
     page: int = 1,
     page_size: int = 10,
     db: Session = Depends(get_db),
-    admin: User = Depends(require_roles("admin")),
+    admin: User = Depends(require_roles("admin", "moderator")),
 ):
     query = db.query(ArticleReview).join(Article, Article.id == ArticleReview.article_id)
     if keyword:
@@ -61,7 +61,7 @@ def review_history(
 
 
 @router.post("", summary="执行审核（一审通过 → 待二审；二审通过 → 发布）")
-def review_article(body: ReviewIn, db: Session = Depends(get_db), admin: User = Depends(require_roles("admin"))):
+def review_article(body: ReviewIn, db: Session = Depends(get_db), admin: User = Depends(require_roles("admin", "moderator"))):
     article = db.get(Article, body.article_id)
     if not article:
         raise HTTPException(404, "文稿不存在")
@@ -70,6 +70,18 @@ def review_article(body: ReviewIn, db: Session = Depends(get_db), admin: User = 
     expected = "pending_first" if body.level == 1 else "pending_second"
     if article.status != expected:
         raise HTTPException(400, f"当前状态为 {article.status}，不能进行{body.level}级审核")
+
+    # 两级审核需由不同管理员完成：二审时若一审审核人是当前用户则拒绝
+    # （系统自动审核的一审 reviewer_id 为空，不受此限制）
+    if body.level == 2:
+        first_review = (
+            db.query(ArticleReview)
+            .filter(ArticleReview.article_id == article.id, ArticleReview.review_level == 1)
+            .order_by(ArticleReview.id.desc())
+            .first()
+        )
+        if first_review and first_review.reviewer_id == admin.id:
+            raise HTTPException(400, "一审与二审需由不同管理员审核，请交由其他管理员处理")
 
     db.add(ArticleReview(
         article_id=article.id,

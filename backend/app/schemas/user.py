@@ -31,19 +31,19 @@ class ProfileUpdateIn(BaseModel):
 
 
 class UserAdminCreate(BaseModel):
-    """管理员创建账号（可创建管理员）"""
+    """系统管理员创建账号（可创建管理员/编辑/用户；moderator 即“管理员”，仅能后台创建）"""
     username: str = Field(min_length=3, max_length=50)
     password: str = Field(min_length=6, max_length=64)
     nickname: str = Field(default="", max_length=50)
     email: str = Field(default="", max_length=100)
-    role: Literal["user", "editor", "admin"] = "user"
+    role: Literal["user", "editor", "moderator", "admin"] = "user"
 
 
 class UserAdminUpdate(BaseModel):
-    """管理员编辑用户：改角色 / 冻结解冻 / 资料"""
+    """系统管理员编辑用户：改角色 / 冻结解冻 / 资料"""
     nickname: str | None = Field(default=None, max_length=50)
     email: str | None = Field(default=None, max_length=100)
     bio: str | None = Field(default=None, max_length=255)
-    role: Literal["user", "editor", "admin"] | None = None
+    role: Literal["user", "editor", "moderator", "admin"] | None = None
     status: Literal["active", "frozen"] | None = None
 

@@ -1,5 +1,12 @@
 # -*- coding: utf-8 -*-
-"""用户管理接口（仅管理员）：列表、创建（含管理员）、编辑（冻结/角色）、删除"""
+"""用户管理接口（仅管理员）：列表、创建（含管理员）、编辑（冻结/角色）、删除
+
+删除用户时会联动处理其关联数据：
+- 用户创建的文稿级联删除（含栏目/渠道关联、审核记录、互动、观看历史）
+- 用户上传的资源保留并转移给系统管理员（避免其他文稿引用失效）
+- 用户作为审核人的审核记录保留，审核人置空（留痕不丢）
+- 用户的点赞/收藏/转发等互动记录删除
+"""
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
@@ -8,6 +15,10 @@ from ..core.deps import get_current_user, require_roles
 from ..core.pagination import paginate
 from ..core.security import hash_password
 from ..database import get_db
+from ..models.article import Article
+from ..models.interaction import UserAction
+from ..models.review import ArticleReview
+from ..models.resource import Resource
 from ..models.user import User
 from ..schemas.user import UserAdminCreate, UserAdminUpdate
 
@@ -99,7 +110,29 @@ def delete_user(user_id: int, db: Session = Depends(get_db), admin: User = Depen
         admin_count = db.query(User).filter(User.role == "admin", User.status == "active").count()
         if admin_count <= 1:
             raise HTTPException(400, "至少保留一名管理员，无法删除")
+
+    # 1. 删除该用户创建的文稿（审核记录、互动、观看历史随文稿外键级联删除）
+    articles = db.query(Article).filter(Article.author_id == user_id).all()
+    for article in articles:
+        db.delete(article)
+
+    # 2. 资源保留：转移给系统管理员，避免其他文稿封面/正文引用失效
+    fallback_admin = db.query(User).filter(User.role == "admin", User.status == "active").first()
+    if fallback_admin:
+        db.query(Resource).filter(Resource.user_id == user_id).update(
+            {"user_id": fallback_admin.id}, synchronize_session=False
+        )
+
+    # 3. 审核记录保留：审核人置空（相当于系统审核，留痕不丢）
+    db.query(ArticleReview).filter(ArticleReview.reviewer_id == user_id).update(
+        {"reviewer_id": None}, synchronize_session=False
+    )
+
+    # 4. 删除该用户的互动记录（点赞/收藏/转发/不感兴趣）
+    db.query(UserAction).filter(UserAction.user_id == user_id).delete(synchronize_session=False)
+
+    # 5. 删除用户（观看历史、AI 调用记录由数据库外键 CASCADE 自动清理）
     db.delete(user)
     db.commit()
-    return {"message": "删除成功"}
+    return {"message": f"删除成功，已联动删除其创建的 {len(articles)} 篇文稿"}
 

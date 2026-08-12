@@ -87,7 +87,8 @@ def my_articles(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    if user.role not in ("editor", "admin"):
+    # 编辑功能：编辑 / 管理员（moderator）/ 系统管理员
+    if user.role not in ("editor", "moderator", "admin"):
         raise HTTPException(403, "仅编辑可写作文稿")
     query = db.query(Article).filter(Article.author_id == user.id)
     if status:
@@ -175,7 +176,8 @@ def related_articles(
 
 @router.post("", summary="创建文稿（编辑/管理员，先存为草稿）")
 def create_article(body: ArticleIn, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    if user.role not in ("editor", "admin"):
+    # 编辑功能：编辑 / 管理员（moderator）/ 系统管理员
+    if user.role not in ("editor", "moderator", "admin"):
         raise HTTPException(403, "仅编辑可写作文稿")
     article = Article(
         title=body.title,

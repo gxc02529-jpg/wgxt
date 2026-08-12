@@ -73,9 +73,9 @@ const menuGroups = [
     title: '内容管理',
     icon: Document,
     children: [
-      { path: '/admin/articles', label: '文稿管理', roles: ['admin', 'editor'] },
-      { path: '/admin/reviews', label: '审核管理', roles: ['admin'] },
-      { path: '/admin/resources', label: '资源管理', roles: ['admin', 'editor'] },
+      { path: '/admin/articles', label: '文稿管理', roles: ['admin', 'editor', 'moderator'] },
+      { path: '/admin/reviews', label: '审核管理', roles: ['admin', 'moderator'] },
+      { path: '/admin/resources', label: '资源管理', roles: ['admin', 'editor', 'moderator'] },
     ],
   },
   {

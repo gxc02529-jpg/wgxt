@@ -10,7 +10,9 @@ export const useAuthStore = defineStore('auth', {
   getters: {
     isLoggedIn: (s) => Boolean(s.token),
     isAdmin: (s) => s.user?.role === 'admin',
-    isEditor: (s) => s.user?.role === 'editor' || s.user?.role === 'admin',
+    // 编辑功能身份：编辑 / 管理员（moderator，审核管理员）/ 系统管理员
+    isEditor: (s) => ['editor', 'moderator', 'admin'].includes(s.user?.role),
+    isModerator: (s) => s.user?.role === 'moderator',
   },
 
   actions: {
