@@ -340,8 +340,8 @@ def main():
     r = client.get(f"{BASE}/articles/mine", headers=ed_h, params={"page_size": 50})
     imported_a = next((a for a in r.json()["items"] if a["title"] == f"导入测试文稿A_{uniq}"), None)
     assert imported_a and imported_a["status"] == "draft", "导入文稿应为草稿"
-    assert imported_a["summary"].startswith("这是正文第一段"), "摘要应取正文首段"
-    print("[16] 导入文稿状态/摘要 OK")
+    assert imported_a["summary"] == "", "导入文稿摘要应留空（不自动截取正文首段）"
+    print("[16] 导入文稿状态/摘要（留空） OK")
 
     # 非 xlsx 文件拒绝
     r = client.post(f"{BASE}/articles/import", headers=ed_h, files={"file": ("bad.txt", b"hello", "text/plain")})

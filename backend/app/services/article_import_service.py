@@ -5,11 +5,16 @@
 - 标题为空 / 正文为空 → 该行失败；标题与库内重复 → 跳过。
 - 栏目按名称匹配（支持顿号/逗号/斜杠分隔多栏目），匹配不到的忽略并提示。
 - 封面为空或下载失败 → 封面留空，文稿仍导入（不因封面问题丢弃整篇）。
+- 摘要默认留空，不自动截取正文首段（摘要由作者后续在编辑页补充）。
+- 封面与正文图片会下载到本地/OSS 存储，并同步写入资源管理（resources）记录；
+  单张图片下载失败保留原链接，不阻断整篇导入。
 - 导入结果统一为草稿（draft），作者为当前用户。
 """
 import io
 import os
 import re
+import html as html_mod
+from datetime import datetime
 
 import httpx
 from fastapi import HTTPException
@@ -19,6 +24,7 @@ from sqlalchemy.orm import Session
 from ..config import settings
 from ..models.article import Article
 from ..models.category import Category
+from ..models.resource import Resource
 from ..models.user import User
 from ..services.oss_service import get_oss_config
 from ..services.storage_service import save_bytes
@@ -79,8 +85,34 @@ def _looks_like_html(text: str) -> bool:
     return bool(re.search(r"<[a-zA-Z/][^>]*>", text))
 
 
-def _download_cover(oss_cfg, url: str) -> str:
-    """下载封面图并按存储配置保存，返回可访问 URL；失败抛异常由调用方记录"""
+def _save_image_record(db, user, oss_cfg, data: bytes, content_type: str, ext: str, original_url: str) -> str:
+    """保存图片字节到存储并写入资源管理记录，返回可访问 URL"""
+    stored_name, url, storage = save_bytes(oss_cfg, data, content_type, ext)
+    # 原始文件名优先取链接最后一段，取不到用日期命名（与「链接上传资源」行为一致）
+    url_path = original_url.split("?")[0].rstrip("/")
+    filename = os.path.basename(url_path) or f"网络图片{datetime.now():%Y%m%d%H%M%S}"
+    db.add(
+        Resource(
+            user_id=user.id,
+            filename=filename,
+            stored_name=stored_name,
+            url=url,
+            file_type=content_type,
+            file_size=len(data),
+            storage=storage,
+        )
+    )
+    return url
+
+
+def _download_image(db, user, oss_cfg, url: str, img_cache: dict | None = None) -> str:
+    """下载图片并按存储配置保存，同时写入资源管理记录，返回可访问 URL。
+
+    - img_cache：本次导入内按原图 URL 去重，同一张图只下载一次。
+    - 下载/存储失败抛异常，由调用方记录为警告，不阻断导入。
+    """
+    if img_cache is not None and url in img_cache:
+        return img_cache[url]
     if not url.startswith(("http://", "https://")):
         raise ValueError("仅支持 http/https 链接")
     with httpx.Client(follow_redirects=True, timeout=15) as client:
@@ -108,8 +140,43 @@ def _download_cover(oss_cfg, url: str) -> str:
                 buf.write(chunk)
             if total == 0:
                 raise ValueError("图片内容为空")
-    _, url_stored, _ = save_bytes(oss_cfg, buf.getvalue(), content_type, ext)
+    url_stored = _save_image_record(db, user, oss_cfg, buf.getvalue(), content_type, ext, url)
+    if img_cache is not None:
+        img_cache[url] = url_stored
     return url_stored
+
+
+def _download_body_images(db, user, oss_cfg, html: str, img_cache: dict | None = None) -> tuple[str, int]:
+    """下载正文 HTML 中的 <img> 图片到存储并生成资源记录，返回 (替换后的 HTML, 失败张数)。
+
+    协议相对地址（//...）自动补 https；无法解析或下载失败的图片保留原链接。
+    单篇最多处理 30 张，超出部分保留原链接，防止异常稿子拖慢导入。
+    """
+    img_re = re.compile(r'<img\s[^>]*?src=["\']([^"\']+)["\'][^>]*>', re.I)
+    state = {"processed": 0, "failed": 0, "limit": 30}
+
+    def _replace(match: re.Match) -> str:
+        if state["processed"] >= state["limit"]:
+            return match.group(0)
+        state["processed"] += 1
+        raw_src = match.group(1)
+        # Excel 正文里 URL 的 & 被转义成了 &amp;，下载前先反转义
+        src = html_mod.unescape(raw_src)
+        abs_src = src if src.startswith(("http://", "https://")) else ("https:" + src if src.startswith("//") else "")
+        if not abs_src.startswith(("http://", "https://")):
+            return match.group(0)
+        try:
+            new_url = _download_image(db, user, oss_cfg, abs_src, img_cache)
+            # 替换回 HTML 时对新 URL 转义，避免特殊字符破坏标签
+            return match.group(0).replace(raw_src, html_mod.escape(new_url, quote=True))
+        except Exception:
+            state["failed"] += 1
+            return match.group(0)
+
+    new_html = img_re.sub(_replace, html)
+    # 超过单篇上限未处理的图片保留原链接，计入提示
+    skipped = max(0, len(img_re.findall(html)) - state["limit"])
+    return new_html, state["failed"] + skipped
 
 
 def import_excel(db: Session, user: User, file_bytes: bytes, filename: str) -> dict:
@@ -131,6 +198,7 @@ def import_excel(db: Session, user: User, file_bytes: bytes, filename: str) -> d
 
     oss_cfg = get_oss_config(db)
     imported, skipped, failed, warnings = 0, [], [], []
+    img_cache = {}  # 本次导入内按原图 URL 去重
     row_no = 0
     for row in ws.iter_rows(values_only=True):
         row_no += 1
@@ -169,28 +237,28 @@ def import_excel(db: Session, user: User, file_bytes: bytes, filename: str) -> d
             cover_raw = str(row[cols["cover"]]).strip()
             if cover_raw:
                 try:
-                    cover_url = _download_cover(oss_cfg, cover_raw)
+                    cover_url = _download_image(db, user, oss_cfg, cover_raw, img_cache)
                 except Exception as e:
                     warnings.append({"row": row_no, "reason": f"封面下载失败，已留空：{str(e)[:50]}"})
 
-        # 正文与摘要处理：兼容纯文本与 HTML 两种来源格式
+        # 正文与摘要处理：兼容纯文本与 HTML 两种来源格式；
+        # 摘要默认留空，不自动截取正文首段（由作者在编辑页补充）
         if _looks_like_html(content):
             # 已是 HTML 正文（如 news-batch 导出的 <p> 段落 + <img>）：原样入库，
             # 纯文本与摘要从 HTML 剥离生成，避免摘要/纯文本里残留标签
             html = content
-            plain = strip_html(content)
-            content_source = plain
-            first_paras = re.findall(r"<p[^>]*>(.*?)</p>", content, re.S)
-            if first_paras:
-                summary = strip_html(first_paras[0])[:200]
-            else:
-                summary = plain[:200]
+            content_source = strip_html(content)
         else:
-            # 纯文本正文：按换行转 <p> 段落；摘要取正文首段前 200 字
+            # 纯文本正文：按换行转 <p> 段落
             paragraphs = [p.strip() for p in content.splitlines() if p.strip()]
             html = "".join(f"<p>{p}</p>" for p in paragraphs)
-            summary = paragraphs[0][:200] if paragraphs else ""
             content_source = content
+        summary = ""
+
+        # 正文图片下载入库并写入资源管理记录；失败保留原链接并提示
+        html, body_img_failed = _download_body_images(db, user, oss_cfg, html, img_cache)
+        if body_img_failed:
+            warnings.append({"row": row_no, "reason": f"正文 {body_img_failed} 张图片下载失败，已保留原链接"})
 
         article = Article(
             title=title,
