@@ -129,6 +129,8 @@ export const portalApi = {
   modules: () => client.get('/portal/modules'),
   create: (data) => client.post('/portal/modules', data),
   update: (key, data) => client.put(`/portal/modules/${key}`, data),
+  // 随机选取带封面的已发布文稿（后台一键填充轮播）
+  bannerRandom: (count = 5) => client.get('/portal/banner/random', { params: { count } }),
   grayscale: () => client.get('/portal/grayscale'),
   // 注册为编辑的开放策略（公开读；管理员写）
   registerEditor: () => client.get('/portal/register-editor'),

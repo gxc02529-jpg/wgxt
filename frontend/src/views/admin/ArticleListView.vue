@@ -107,7 +107,14 @@
         <el-table-column type="selection" width="48" :selectable="isSelectable" />
         <el-table-column label="文稿" min-width="280">
           <template #default="{ row }">
-            <div class="cell-media">
+            <div
+              class="cell-media cell-media--clickable"
+              tabindex="0"
+              role="button"
+              :aria-label="`预览《${row.title}》`"
+              @click="openPreview(row)"
+              @keyup.enter="openPreview(row)"
+            >
               <img v-if="row.cover_url" :src="row.cover_url" :alt="row.title" class="cell-thumb" loading="lazy" />
               <span v-else class="cell-thumb cell-thumb--empty">
                 {{ (row.categories[0]?.name || '文').slice(0, 1) }}
@@ -179,6 +186,9 @@
         />
       </div>
     </div>
+
+    <!-- 文稿预览抽屉 -->
+    <ArticlePreviewDrawer v-model:visible="previewVisible" :article-id="previewId" />
   </div>
 </template>
 
@@ -191,6 +201,7 @@ import {
 } from '@element-plus/icons-vue'
 import { articleApi } from '../../api'
 import { useAuthStore } from '../../stores/auth'
+import ArticlePreviewDrawer from '../../components/ArticlePreviewDrawer.vue'
 
 const router = useRouter()
 const auth = useAuthStore()
@@ -218,6 +229,14 @@ const importFileList = ref([])
 const importFile = ref(null)
 const importing = ref(false)
 const importResult = ref(null)
+// 文稿预览
+const previewVisible = ref(false)
+const previewId = ref(null)
+
+function openPreview(row) {
+  previewId.value = row.id
+  previewVisible.value = true
+}
 
 function onImportFileChange(file) {
   importFile.value = file.raw
@@ -420,6 +439,22 @@ onMounted(load)
 </script>
 
 <style scoped>
+/* ---- 文稿列可点击预览 ---- */
+.cell-media--clickable {
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  transition: background-color 0.15s ease;
+}
+
+.cell-media--clickable:hover {
+  background: var(--color-primary-soft);
+}
+
+.cell-media--clickable:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
 /* ---- 批量导入弹窗 ---- */
 .import-tip {
   margin-bottom: 14px;

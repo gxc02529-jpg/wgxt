@@ -15,7 +15,13 @@
         <div class="admin-card">
           <el-table :data="list" v-loading="loading">
             <el-table-column prop="id" label="ID" width="64" />
-            <el-table-column prop="title" label="标题" min-width="240" show-overflow-tooltip />
+            <el-table-column label="标题" min-width="240" show-overflow-tooltip>
+              <template #default="{ row }">
+                <button type="button" class="link-title" @click="openPreview(row.id)">
+                  {{ row.title }}
+                </button>
+              </template>
+            </el-table-column>
             <el-table-column label="栏目" width="180">
               <template #default="{ row }">
                 <div class="tag-list">
@@ -40,7 +46,13 @@
         <div class="admin-card">
           <el-table :data="list" v-loading="loading">
             <el-table-column prop="id" label="ID" width="64" />
-            <el-table-column prop="title" label="标题" min-width="240" show-overflow-tooltip />
+            <el-table-column label="标题" min-width="240" show-overflow-tooltip>
+              <template #default="{ row }">
+                <button type="button" class="link-title" @click="openPreview(row.id)">
+                  {{ row.title }}
+                </button>
+              </template>
+            </el-table-column>
             <el-table-column label="栏目" width="180">
               <template #default="{ row }">
                 <div class="tag-list">
@@ -69,7 +81,13 @@
           </div>
           <el-table :data="history" v-loading="loading">
             <el-table-column prop="id" label="ID" width="64" />
-            <el-table-column prop="article_title" label="文稿" min-width="220" show-overflow-tooltip />
+            <el-table-column label="文稿" min-width="220" show-overflow-tooltip>
+              <template #default="{ row }">
+                <button type="button" class="link-title" @click="openPreview(row.article_id)">
+                  {{ row.article_title }}
+                </button>
+              </template>
+            </el-table-column>
             <el-table-column label="级别" width="90">
               <template #default="{ row }">
                 <span class="status-badge" :class="row.review_level === 1 ? 'status-badge--blue' : 'status-badge--violet'">
@@ -124,6 +142,9 @@
         <el-button type="primary" :loading="reviewing" @click="doReview('approve')">通过</el-button>
       </template>
     </el-dialog>
+
+    <!-- 文稿预览抽屉 -->
+    <ArticlePreviewDrawer v-model:visible="previewVisible" :article-id="previewId" />
   </div>
 </template>
 
@@ -132,6 +153,7 @@ import { onMounted, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { DocumentChecked } from '@element-plus/icons-vue'
 import { articleApi, reviewApi } from '../../api'
+import ArticlePreviewDrawer from '../../components/ArticlePreviewDrawer.vue'
 
 const activeTab = ref('level1')
 const list = ref([])
@@ -145,6 +167,14 @@ const dialogVisible = ref(false)
 const current = ref(null)
 const reviewing = ref(false)
 const reviewForm = reactive({ comment: '' })
+// 文稿预览
+const previewVisible = ref(false)
+const previewId = ref(null)
+
+function openPreview(articleId) {
+  previewId.value = articleId
+  previewVisible.value = true
+}
 
 async function load() {
   loading.value = true
@@ -209,6 +239,33 @@ onMounted(load)
 </script>
 
 <style scoped>
+/* ---- 可点击标题（打开文稿预览） ---- */
+.link-title {
+  border: none;
+  background: none;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  color: var(--color-primary);
+  cursor: pointer;
+  text-align: left;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+.link-title:hover {
+  text-decoration: underline;
+}
+
+.link-title:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
 .review-content {
   max-height: 420px;
   overflow: auto;

@@ -1,10 +1,13 @@
 # -*- coding: utf-8 -*-
 """门户模块接口：前台读取，后台（管理员）配置轮播/公告；门户主题切换"""
-from fastapi import APIRouter, Depends, HTTPException
+import random
+
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from ..core.deps import require_roles
 from ..database import get_db
+from ..models.article import Article
 from ..models.portal import PortalModule
 from ..models.user import User
 from ..schemas.portal import OssConfigIn, PortalModuleIn, RegisterEditorIn, ThemeSwitchIn
@@ -14,6 +17,39 @@ router = APIRouter(prefix="/portal", tags=["门户"])
 
 # 门户可选主题：扩充新风格时在此登记，并同步 frontend/src/styles/themes.css 的 .theme-* 覆盖块
 PORTAL_THEMES = ["editorial", "cyber", "comic"]
+
+
+@router.get("/banner/random", summary="随机选取带封面的已发布文稿（管理员，用于轮播图）")
+def random_banner_candidates(
+    count: int = Query(default=5, ge=1, le=10, description="随机数量"),
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_roles("admin")),
+):
+    """从所有已发布且带封面的文稿中随机抽取 count 篇，供后台一键填充首页轮播图。
+    候选不足 count 时返回全部可用文稿。"""
+    candidates = (
+        db.query(Article)
+        .filter(
+            Article.status == "published",
+            Article.cover_url.isnot(None),
+            Article.cover_url != "",
+        )
+        .all()
+    )
+    picked = random.sample(candidates, min(count, len(candidates)))
+    return {
+        "total": len(candidates),
+        "items": [
+            {
+                "id": a.id,
+                "title": a.title,
+                "cover_url": a.cover_url,
+                "categories": [{"id": c.id, "name": c.name} for c in a.categories],
+                "link": f"/article/{a.id}",
+            }
+            for a in picked
+        ]
+    }
 
 
 @router.get("/theme", summary="获取当前门户主题（公开）")

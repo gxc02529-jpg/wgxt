@@ -348,6 +348,52 @@ def main():
     assert r.status_code == 400 and ".xlsx" in r.text, f"非 xlsx 应被拒绝: {r.text}"
     print("[16] 非 xlsx 文件拒绝 OK")
 
+    # 17. 轮播随机选取：候选池=已发布且带封面文稿；发布带封面文稿后 total 精确 +1
+    r = client.get(f"{BASE}/portal/banner/random", headers=admin_h, params={"count": 5})
+    assert r.status_code == 200, f"随机选取接口失败: {r.text}"
+    assert "total" in r.json(), "随机接口应返回候选总数 total"
+    total_before = r.json()["total"]
+    assert 0 <= len(r.json()["items"]) <= 5, f"随机结果数量异常: {len(r.json()['items'])}"
+    assert all(i["cover_url"] for i in r.json()["items"]), "随机结果必须全部带封面"
+    assert all(i["link"].startswith("/article/") for i in r.json()["items"]), "随机结果应带文稿链接"
+    print(f"[17] 轮播随机选取接口 OK  total={total_before} items={len(r.json()['items'])}")
+
+    r = client.post(f"{BASE}/articles", headers=ed_h, json={
+        "title": f"带封面文稿_{uniq}",
+        "summary": "用于轮播随机选取测试",
+        "content": "<p>带封面正文。</p>",
+        "cover_url": "https://example.com/cover.jpg",
+        "category_ids": cat_ids,
+    })
+    assert r.status_code == 200, f"创建带封面文稿失败: {r.text}"
+    cover_aid = r.json()["article"]["id"]
+    r = client.post(f"{BASE}/articles/{cover_aid}/submit", headers=ed_h)
+    assert r.status_code == 200 and r.json()["article"]["status"] == "pending_first"
+    r = client.post(f"{BASE}/reviews", headers=admin_h,
+                    json={"article_id": cover_aid, "level": 1, "action": "approve", "comment": "带封面文稿一审"})
+    assert r.status_code == 200 and r.json()["article"]["status"] == "pending_second"
+    r = client.post(f"{BASE}/reviews", headers=admin2_h,
+                    json={"article_id": cover_aid, "level": 2, "action": "approve", "comment": "带封面文稿二审"})
+    assert r.status_code == 200 and r.json()["article"]["status"] == "published"
+    print(f"[17] 带封面文稿发布 OK  id={cover_aid}")
+
+    r = client.get(f"{BASE}/portal/banner/random", headers=admin_h, params={"count": 5})
+    assert r.status_code == 200, f"随机选取接口失败: {r.text}"
+    assert r.json()["total"] == total_before + 1, \
+        f"发布带封面文稿后候选池应 +1: {total_before} -> {r.json()['total']}"
+    assert 0 <= len(r.json()["items"]) <= 5
+    assert all(i["cover_url"] for i in r.json()["items"]), "随机结果必须全部带封面"
+    print(f"[17] 发布带封面文稿后候选池 OK  total={r.json()['total']}")
+
+    # 边界：count 越界拒绝；非管理员 403
+    r = client.get(f"{BASE}/portal/banner/random", headers=admin_h, params={"count": 0})
+    assert r.status_code in (400, 422), f"count=0 应被拒绝: {r.text}"
+    r = client.get(f"{BASE}/portal/banner/random", headers=admin_h, params={"count": 11})
+    assert r.status_code in (400, 422), f"count=11 应被拒绝: {r.text}"
+    r = client.get(f"{BASE}/portal/banner/random", headers=user_h)
+    assert r.status_code == 403, f"非管理员应 403: {r.text}"
+    print("[17] 随机选取边界/权限校验 OK")
+
     print("\nALL SMOKE TESTS PASSED")
 
 

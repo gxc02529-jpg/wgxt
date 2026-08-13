@@ -8,7 +8,7 @@
         <h2>首页轮播图</h2>
         <el-switch v-model="bannerModule.enabled" active-text="启用" @change="saveModule('banner')" />
       </div>
-      <p class="panel__tip">从已发布文稿中选取展示在首页顶部的轮播图（仅带封面的文稿可选），顺序即展示顺序。</p>
+      <p class="panel__tip">从已发布文稿中选取展示在首页顶部的轮播图（仅带封面的文稿可选），顺序即展示顺序；也可一键随机选取 5 篇带封面文稿。</p>
 
       <div class="banner-editor">
         <div v-for="(slide, i) in bannerSlides" :key="slide.article_id || i" class="banner-editor__row">
@@ -26,6 +26,10 @@
           :image-size="60"
         />
         <div class="banner-editor__actions">
+          <el-button type="success" plain :loading="randomizingBanner" @click="randomizeBanner">
+            <el-icon><Refresh /></el-icon>
+            随机选 5 篇
+          </el-button>
           <el-button type="primary" @click="openArticlePicker">
             <el-icon><Document /></el-icon>
             从文稿中选取
@@ -118,7 +122,7 @@
 <script setup>
 import { onMounted, ref } from 'vue'
 import { ElMessage } from 'element-plus'
-import { Document } from '@element-plus/icons-vue'
+import { Document, Refresh } from '@element-plus/icons-vue'
 import { articleApi, portalApi } from '../../api'
 
 const bannerModule = ref({ module_key: 'banner', title: '', content: [], enabled: true })
@@ -127,6 +131,7 @@ const bannerSlides = ref([])
 const noticeText = ref('')
 const savingBanner = ref(false)
 const savingNotice = ref(false)
+const randomizingBanner = ref(false)
 // 文稿选取弹窗
 const pickerVisible = ref(false)
 const pickerKeyword = ref('')
@@ -211,6 +216,41 @@ function confirmPick() {
     ElMessage.info('所选文稿已在轮播中')
   }
   pickerVisible.value = false
+}
+
+async function randomizeBanner() {
+  randomizingBanner.value = true
+  try {
+    const res = await portalApi.bannerRandom(5)
+    const candidates = res.items || []
+    if (!candidates.length) {
+      ElMessage.info('暂无带封面的已发布文稿，请先发布带封面文稿')
+      return
+    }
+    const existing = new Set(bannerSlides.value.map((s) => s.article_id).filter(Boolean))
+    let added = 0
+    for (const a of candidates) {
+      if (existing.has(a.id)) continue
+      bannerSlides.value.push({
+        article_id: a.id,
+        title: a.title,
+        image: a.cover_url,
+        link: a.link || `/article/${a.id}`,
+      })
+      existing.add(a.id)
+      added++
+    }
+    const skipped = candidates.length - added
+    if (added) {
+      ElMessage.success(`已随机添加 ${added} 张轮播${skipped ? `（跳过已在轮播中的 ${skipped} 张）` : ''}`)
+    } else {
+      ElMessage.info('随机选中的文稿均已在轮播中')
+    }
+  } catch (e) {
+    ElMessage.error(e?.response?.data?.detail || e?.message || '随机选取失败')
+  } finally {
+    randomizingBanner.value = false
+  }
 }
 
 async function saveModule(key) {
