@@ -7,7 +7,7 @@ from ..core.deps import require_roles
 from ..database import get_db
 from ..models.portal import PortalModule
 from ..models.user import User
-from ..schemas.portal import PortalModuleIn, ThemeSwitchIn
+from ..schemas.portal import OssConfigIn, PortalModuleIn, RegisterEditorIn, ThemeSwitchIn
 from ..services.settings_service import get_setting, set_setting
 
 router = APIRouter(prefix="/portal", tags=["门户"])
@@ -28,6 +28,82 @@ def get_portal_theme(db: Session = Depends(get_db)):
 def get_grayscale(db: Session = Depends(get_db)):
     """名人逝世等场景下，管理员在后台系统设置开启后，前台门户全站显示为黑白"""
     return {"enabled": bool(get_setting(db, "site_grayscale", default=False))}
+
+
+@router.get("/register-editor", summary="查询是否允许用户注册为编辑写手（公开）")
+def get_register_editor_policy(db: Session = Depends(get_db)):
+    """注册页读取此策略：开启时展示"编辑（可写稿）"选项，关闭时仅能注册普通用户"""
+    return {"enabled": bool(get_setting(db, "register_editor_enabled", default=True))}
+
+
+@router.put("/register-editor", summary="更新注册为编辑的开放策略（管理员）")
+def set_register_editor_policy(
+    body: RegisterEditorIn,
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_roles("admin")),
+):
+    set_setting(
+        db,
+        "register_editor_enabled",
+        body.enabled,
+        value_type="bool",
+        description="允许用户注册为编辑写手；关闭后编辑账号仅可后台创建",
+    )
+    db.commit()
+    return {"message": "保存成功", "enabled": body.enabled}
+
+
+@router.get("/oss-config", summary="读取 OSS 配置（管理员，secret_key 脱敏）")
+def get_oss_config(
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_roles("admin")),
+):
+    """读取 S3 兼容对象存储配置；secret_key 只回显占位符，防止明文泄露"""
+    cfg = get_setting(db, "oss_config", default=None)
+    cfg = cfg if isinstance(cfg, dict) else {}
+    masked = {
+        "endpoint": cfg.get("endpoint", ""),
+        "bucket": cfg.get("bucket", ""),
+        "region": cfg.get("region", ""),
+        "access_key": cfg.get("access_key", ""),
+        "secret_key": "****" if cfg.get("secret_key") else "",
+        "path_prefix": cfg.get("path_prefix", ""),
+        "public_base_url": cfg.get("public_base_url", ""),
+    }
+    return {"configured": bool(str(cfg.get("endpoint", "")).strip()), "config": masked}
+
+
+@router.put("/oss-config", summary="保存 OSS 配置（管理员；secret_key 传 **** 或空保留原值）")
+def set_oss_config(
+    body: OssConfigIn,
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_roles("admin")),
+):
+    old = get_setting(db, "oss_config", default=None)
+    old = old if isinstance(old, dict) else {}
+    secret = body.secret_key
+    # 只有显式传 **** 表示保留原值；传空字符串则清空（用于"清空配置"场景）
+    if secret == "****":
+        secret = old.get("secret_key", "")
+    cfg = {
+        "endpoint": body.endpoint.strip(),
+        "bucket": body.bucket.strip(),
+        "region": body.region.strip(),
+        "access_key": body.access_key.strip(),
+        "secret_key": secret,
+        "path_prefix": body.path_prefix.strip(),
+        "public_base_url": body.public_base_url.strip(),
+    }
+    set_setting(
+        db,
+        "oss_config",
+        cfg,
+        value_type="json",
+        description="S3 兼容对象存储配置（endpoint 为空则上传到本地）",
+    )
+    db.commit()
+    masked = {**cfg, "secret_key": "****" if cfg["secret_key"] else ""}
+    return {"message": "保存成功", "configured": bool(cfg["endpoint"]), "config": masked}
 
 
 @router.put("/theme", summary="切换门户主题（管理员）")

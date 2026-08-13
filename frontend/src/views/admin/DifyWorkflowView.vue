@@ -1,17 +1,20 @@
 <template>
   <div class="dify-page">
-    <el-card shadow="never">
-      <template #header>
-        <div class="dify-header">
-          <span>Dify 工作流</span>
-          <span class="dify-header__tip">
-            在这里登记 Dify 工作流（一个应用 = 一组 API 地址 + Key），业务代码通过 run_workflow() 调用
-          </span>
-          <el-button type="primary" size="small" @click="openCreate">新增工作流</el-button>
-        </div>
-      </template>
+    <div class="admin-head">
+      <span class="admin-head__icon">
+        <el-icon><Connection /></el-icon>
+      </span>
+      <div class="admin-head__text">
+        <h1 class="admin-head__title">Dify 工作流</h1>
+        <p class="admin-head__sub">登记 Dify 工作流（一个应用 = 一组 API 地址 + Key），业务代码通过 run_workflow() 调用</p>
+      </div>
+      <div class="admin-head__actions">
+        <el-button type="primary" @click="openCreate">新增工作流</el-button>
+      </div>
+    </div>
 
-      <el-table v-if="workflows.length" :data="workflows" v-loading="loading" stripe>
+    <div class="admin-card">
+      <el-table v-if="workflows.length" :data="workflows" v-loading="loading">
         <el-table-column prop="id" label="ID" width="60" />
         <el-table-column label="业务标识" width="170">
           <template #default="{ row }"><code>{{ row.name }}</code></template>
@@ -22,19 +25,23 @@
         <el-table-column prop="timeout" label="超时(s)" width="90" />
         <el-table-column label="状态" width="90">
           <template #default="{ row }">
-            <el-tag :type="row.enabled ? 'success' : 'info'">{{ row.enabled ? '启用' : '停用' }}</el-tag>
+            <span class="status-badge" :class="row.enabled ? 'status-badge--green' : 'status-badge--gray'">
+              {{ row.enabled ? '启用' : '停用' }}
+            </span>
           </template>
         </el-table-column>
         <el-table-column label="操作" width="220" fixed="right">
           <template #default="{ row }">
-            <el-button size="small" @click="openRun(row)">试运行</el-button>
-            <el-button size="small" type="primary" @click="openEdit(row)">编辑</el-button>
-            <el-button size="small" type="danger" @click="remove(row)">删除</el-button>
+            <div class="row-actions">
+              <el-button link @click="openRun(row)">试运行</el-button>
+              <el-button link type="primary" @click="openEdit(row)">编辑</el-button>
+              <el-button link type="danger" @click="remove(row)">删除</el-button>
+            </div>
           </template>
         </el-table-column>
       </el-table>
       <el-empty v-else-if="!loading" description="暂无登记的工作流，点击右上角「新增工作流」" />
-    </el-card>
+    </div>
 
     <!-- 新增 / 编辑 -->
     <el-dialog
@@ -106,6 +113,7 @@
 <script setup>
 import { onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { Connection } from '@element-plus/icons-vue'
 import { difyApi } from '../../api'
 
 const workflows = ref([])
@@ -248,23 +256,6 @@ async function doRun() {
 </script>
 
 <style scoped>
-.dify-header {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.dify-header > span:first-child {
-  font-size: 15px;
-  font-weight: 600;
-}
-
-.dify-header__tip {
-  flex: 1;
-  font-size: 12px;
-  color: var(--color-text-muted);
-}
-
 .run-tip {
   margin-bottom: 12px;
 }

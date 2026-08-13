@@ -6,7 +6,7 @@
 from app.database import Base, engine, SessionLocal, ensure_database, ensure_schema_compat
 from app.models import (  # noqa: F401
     user, category, channel, article, review, resource, portal, event, interaction,
-    anonymous_action, system_setting, dify_workflow, view_history, ai_call,
+    anonymous_action, system_setting, dify_workflow, view_history, ai_call, comment, checkin,
 )
 from app.core.security import hash_password
 from app.models.user import User
@@ -85,6 +85,29 @@ def seed():
                 config_value="false",
                 value_type="bool",
                 description="哀悼灰度模式：开启后前台门户全站显示为黑白（用于名人逝世等场景）",
+            ))
+        # 6. 积分系统配置：每日签到积分范围（默认 1~5，管理员可在系统设置调整）
+        if not db.query(SystemSetting).filter(SystemSetting.config_key == "signin_min_points").first():
+            db.add(SystemSetting(
+                config_key="signin_min_points",
+                config_value="1",
+                value_type="int",
+                description="每日签到最小积分",
+            ))
+        if not db.query(SystemSetting).filter(SystemSetting.config_key == "signin_max_points").first():
+            db.add(SystemSetting(
+                config_key="signin_max_points",
+                config_value="5",
+                value_type="int",
+                description="每日签到最大积分",
+            ))
+        # 7. 注册策略：是否允许用户注册为编辑写手（关闭后编辑账号仅可后台创建）
+        if not db.query(SystemSetting).filter(SystemSetting.config_key == "register_editor_enabled").first():
+            db.add(SystemSetting(
+                config_key="register_editor_enabled",
+                config_value="true",
+                value_type="bool",
+                description="允许用户注册为编辑写手；关闭后编辑账号仅可后台创建",
             ))
 
         db.commit()

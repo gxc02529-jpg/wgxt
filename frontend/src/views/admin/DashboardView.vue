@@ -1,6 +1,14 @@
 <template>
   <div class="dashboard">
-    <h1 class="page-title">仪表盘</h1>
+    <div class="admin-head">
+      <span class="admin-head__icon">
+        <el-icon><Odometer /></el-icon>
+      </span>
+      <div class="admin-head__text">
+        <h1 class="admin-head__title">仪表盘</h1>
+        <p class="admin-head__sub">平台运营核心指标与待办事项</p>
+      </div>
+    </div>
 
     <!-- 数据卡片 -->
     <div class="stat-cards">
@@ -22,9 +30,9 @@
           <el-table-column prop="title" label="标题" min-width="220" show-overflow-tooltip />
           <el-table-column label="阶段" width="100">
             <template #default="{ row }">
-              <el-tag :type="row.status === 'pending_first' ? 'warning' : 'danger'" size="small">
+              <span class="status-badge" :class="row.status === 'pending_first' ? 'status-badge--orange' : 'status-badge--red'">
                 {{ row.status === 'pending_first' ? '待一审' : '待二审' }}
-              </el-tag>
+              </span>
             </template>
           </el-table-column>
           <el-table-column prop="author_name" label="作者" width="100" />
@@ -56,6 +64,7 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
 import { ElMessage } from 'element-plus'
+import { Odometer } from '@element-plus/icons-vue'
 import { articleApi, reviewApi, statsApi } from '../../api'
 
 const overview = ref({})
@@ -86,11 +95,6 @@ onMounted(async () => {
 </script>
 
 <style scoped>
-.page-title {
-  font-size: 24px;
-  margin-bottom: 20px;
-}
-
 .stat-cards {
   display: grid;
   grid-template-columns: repeat(6, 1fr);

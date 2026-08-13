@@ -1,73 +1,99 @@
 <template>
   <div class="review-page">
-    <h1 class="page-title">审核管理</h1>
+    <div class="admin-head">
+      <span class="admin-head__icon">
+        <el-icon><DocumentChecked /></el-icon>
+      </span>
+      <div class="admin-head__text">
+        <h1 class="admin-head__title">审核管理</h1>
+        <p class="admin-head__sub">文稿两级审核（一审 / 二审），需由不同管理员完成</p>
+      </div>
+    </div>
 
     <el-tabs v-model="activeTab" @tab-change="reload">
       <el-tab-pane label="待一审" name="level1">
-        <el-table :data="list" v-loading="loading">
-          <el-table-column prop="id" label="ID" width="64" />
-          <el-table-column prop="title" label="标题" min-width="240" show-overflow-tooltip />
-          <el-table-column label="栏目" width="160">
-            <template #default="{ row }">
-              <el-tag v-for="c in row.categories" :key="c.id" size="small" class="mr-2">{{ c.name }}</el-tag>
-            </template>
-          </el-table-column>
-          <el-table-column prop="author_name" label="作者" width="110" />
-          <el-table-column prop="updated_at" label="提交时间" width="160" />
-          <el-table-column label="操作" width="120" fixed="right">
-            <template #default="{ row }">
-              <el-button link type="primary" @click="openReview(row)">审核</el-button>
-            </template>
-          </el-table-column>
-        </el-table>
+        <div class="admin-card">
+          <el-table :data="list" v-loading="loading">
+            <el-table-column prop="id" label="ID" width="64" />
+            <el-table-column prop="title" label="标题" min-width="240" show-overflow-tooltip />
+            <el-table-column label="栏目" width="180">
+              <template #default="{ row }">
+                <div class="tag-list">
+                  <span v-for="c in row.categories" :key="c.id" class="mini-tag">{{ c.name }}</span>
+                </div>
+              </template>
+            </el-table-column>
+            <el-table-column prop="author_name" label="作者" width="110" />
+            <el-table-column prop="updated_at" label="提交时间" width="160" />
+            <el-table-column label="操作" width="120" fixed="right">
+              <template #default="{ row }">
+                <div class="row-actions">
+                  <el-button link type="primary" @click="openReview(row)">审核</el-button>
+                </div>
+              </template>
+            </el-table-column>
+          </el-table>
+        </div>
       </el-tab-pane>
 
       <el-tab-pane label="待二审" name="level2">
-        <el-table :data="list" v-loading="loading">
-          <el-table-column prop="id" label="ID" width="64" />
-          <el-table-column prop="title" label="标题" min-width="240" show-overflow-tooltip />
-          <el-table-column label="栏目" width="160">
-            <template #default="{ row }">
-              <el-tag v-for="c in row.categories" :key="c.id" size="small" class="mr-2">{{ c.name }}</el-tag>
-            </template>
-          </el-table-column>
-          <el-table-column prop="author_name" label="作者" width="110" />
-          <el-table-column prop="updated_at" label="一审通过时间" width="160" />
-          <el-table-column label="操作" width="120" fixed="right">
-            <template #default="{ row }">
-              <el-button link type="primary" @click="openReview(row)">审核</el-button>
-            </template>
-          </el-table-column>
-        </el-table>
+        <div class="admin-card">
+          <el-table :data="list" v-loading="loading">
+            <el-table-column prop="id" label="ID" width="64" />
+            <el-table-column prop="title" label="标题" min-width="240" show-overflow-tooltip />
+            <el-table-column label="栏目" width="180">
+              <template #default="{ row }">
+                <div class="tag-list">
+                  <span v-for="c in row.categories" :key="c.id" class="mini-tag">{{ c.name }}</span>
+                </div>
+              </template>
+            </el-table-column>
+            <el-table-column prop="author_name" label="作者" width="110" />
+            <el-table-column prop="updated_at" label="一审通过时间" width="160" />
+            <el-table-column label="操作" width="120" fixed="right">
+              <template #default="{ row }">
+                <div class="row-actions">
+                  <el-button link type="primary" @click="openReview(row)">审核</el-button>
+                </div>
+              </template>
+            </el-table-column>
+          </el-table>
+        </div>
       </el-tab-pane>
 
       <el-tab-pane label="审核记录" name="history">
-        <el-input v-model="historyKeyword" placeholder="按文稿标题筛选" clearable style="width: 240px; margin-bottom: 12px" @keyup.enter="reload" />
-        <el-table :data="history" v-loading="loading">
-          <el-table-column prop="id" label="ID" width="64" />
-          <el-table-column prop="article_title" label="文稿" min-width="220" show-overflow-tooltip />
-          <el-table-column label="级别" width="90">
-            <template #default="{ row }">
-              <el-tag size="small" :type="row.review_level === 1 ? 'warning' : 'danger'">
-                {{ row.review_level === 1 ? '一审' : '二审' }}
-              </el-tag>
-            </template>
-          </el-table-column>
-          <el-table-column label="结果" width="90">
-            <template #default="{ row }">
-              <el-tag size="small" :type="row.action === 'approve' ? 'success' : 'danger'">
-                {{ row.action === 'approve' ? '通过' : '驳回' }}
-              </el-tag>
-            </template>
-          </el-table-column>
-          <el-table-column prop="comment" label="意见" min-width="160" show-overflow-tooltip />
-          <el-table-column prop="reviewer_name" label="审核人" width="100" />
-          <el-table-column prop="created_at" label="时间" width="160" />
-        </el-table>
+        <div class="admin-card">
+          <div class="table-toolbar">
+            <el-input v-model="historyKeyword" placeholder="按文稿标题筛选" clearable style="width: 240px" @keyup.enter="reload" @clear="reload" />
+            <el-button type="primary" @click="reload">查询</el-button>
+          </div>
+          <el-table :data="history" v-loading="loading">
+            <el-table-column prop="id" label="ID" width="64" />
+            <el-table-column prop="article_title" label="文稿" min-width="220" show-overflow-tooltip />
+            <el-table-column label="级别" width="90">
+              <template #default="{ row }">
+                <span class="status-badge" :class="row.review_level === 1 ? 'status-badge--blue' : 'status-badge--violet'">
+                  {{ row.review_level === 1 ? '一审' : '二审' }}
+                </span>
+              </template>
+            </el-table-column>
+            <el-table-column label="结果" width="90">
+              <template #default="{ row }">
+                <span class="status-badge" :class="row.action === 'approve' ? 'status-badge--green' : 'status-badge--red'">
+                  {{ row.action === 'approve' ? '通过' : '驳回' }}
+                </span>
+              </template>
+            </el-table-column>
+            <el-table-column prop="comment" label="意见" min-width="160" show-overflow-tooltip />
+            <el-table-column prop="reviewer_name" label="审核人" width="100" />
+            <el-table-column prop="created_at" label="时间" width="160" />
+          </el-table>
+        </div>
       </el-tab-pane>
     </el-tabs>
 
-    <div class="pager">
+    <div class="admin-pager">
+      <span class="admin-pager__info">共 {{ total }} 条记录</span>
       <el-pagination
         layout="total, prev, pager, next"
         :total="total"
@@ -104,6 +130,7 @@
 <script setup>
 import { onMounted, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
+import { DocumentChecked } from '@element-plus/icons-vue'
 import { articleApi, reviewApi } from '../../api'
 
 const activeTab = ref('level1')
@@ -182,11 +209,6 @@ onMounted(load)
 </script>
 
 <style scoped>
-.page-title {
-  font-size: 24px;
-  margin-bottom: 16px;
-}
-
 .review-content {
   max-height: 420px;
   overflow: auto;

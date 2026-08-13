@@ -1,6 +1,14 @@
 <template>
   <div class="stats-page">
-    <h1 class="page-title">数据统计</h1>
+    <div class="admin-head">
+      <span class="admin-head__icon">
+        <el-icon><TrendCharts /></el-icon>
+      </span>
+      <div class="admin-head__text">
+        <h1 class="admin-head__title">数据统计</h1>
+        <p class="admin-head__sub">行为趋势、栏目数据、热门文稿与埋点明细</p>
+      </div>
+    </div>
 
     <!-- 概览卡片 -->
     <div class="stat-cards">
@@ -93,7 +101,9 @@
         <el-table-column prop="id" label="ID" width="90" />
         <el-table-column label="事件" width="90">
           <template #default="{ row }">
-            <el-tag size="small">{{ eventLabel[row.event_type] || row.event_type }}</el-tag>
+            <span class="mini-tag" :class="eventBadge[row.event_type] || 'mini-tag--empty'">
+              {{ eventLabel[row.event_type] || row.event_type }}
+            </span>
           </template>
         </el-table-column>
         <el-table-column prop="user_id" label="用户ID" width="90" />
@@ -123,6 +133,7 @@ import { BarChart, LineChart } from 'echarts/charts'
 import { GridComponent, LegendComponent, TooltipComponent } from 'echarts/components'
 import { CanvasRenderer } from 'echarts/renderers'
 import { ElMessage } from 'element-plus'
+import { TrendCharts } from '@element-plus/icons-vue'
 import { statsApi } from '../../api'
 
 echarts.use([LineChart, BarChart, GridComponent, TooltipComponent, LegendComponent, CanvasRenderer])
@@ -141,6 +152,7 @@ const dateRange = ref([])
 const eventsLoading = ref(false)
 
 const eventLabel = { view: '观看', like: '点赞', favorite: '收藏', share: '转发' }
+const eventBadge = { view: 'mini-tag--blue', like: 'mini-tag--green', favorite: 'mini-tag--violet', share: 'mini-tag--orange' }
 
 const cards = computed(() => [
   { label: '注册用户', value: overview.value.total_users ?? '-' },
@@ -282,11 +294,6 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
-.page-title {
-  font-size: 24px;
-  margin-bottom: 16px;
-}
-
 .stat-cards {
   display: grid;
   grid-template-columns: repeat(6, 1fr);

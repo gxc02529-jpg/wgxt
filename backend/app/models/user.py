@@ -20,6 +20,9 @@ class User(Base):
     role = Column(String(20), default="user", index=True, comment="角色")
     # 状态：active 正常 / frozen 冻结（冻结后无法登录与互动）
     status = Column(String(20), default="active", index=True, comment="账号状态")
+    # 积分：每日签到获得，后台可调整（正加负减，不小于 0）
+    # nullable=False + server_default="0"：新库 DDL 与老库 ALTER 迁移保持一致（NOT NULL DEFAULT 0）
+    points = Column(Integer, nullable=False, default=0, server_default="0", comment="用户积分")
     bio = Column(String(255), comment="个人简介（编辑简介）")
     created_at = Column(DateTime, default=datetime.now, comment="注册时间")
     updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now, comment="更新时间")
@@ -34,6 +37,7 @@ class User(Base):
             "avatar": self.avatar,
             "role": self.role,
             "status": self.status,
+            "points": self.points or 0,
             "bio": self.bio,
             "created_at": self.created_at.strftime("%Y-%m-%d %H:%M:%S") if self.created_at else None,
         }

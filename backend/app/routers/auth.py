@@ -8,6 +8,7 @@ from ..core.security import create_access_token, hash_password, verify_password
 from ..database import get_db
 from ..models.user import User
 from ..schemas.user import LoginIn, ProfileUpdateIn, RegisterIn
+from ..services.settings_service import get_setting
 
 router = APIRouter(prefix="/auth", tags=["认证"])
 
@@ -17,12 +18,16 @@ def register(body: RegisterIn, db: Session = Depends(get_db)):
     if db.query(User).filter(User.username == body.username).first():
         raise HTTPException(400, "用户名已存在")
 
+    # 编辑注册开关：后台「门户设置」关闭后，编辑账号只能由管理员在后台创建
+    if body.role == "editor" and not get_setting(db, "register_editor_enabled", default=True):
+        raise HTTPException(400, "编辑注册已关闭，编辑账号需由管理员在后台创建")
+
     user = User(
         username=body.username,
         password_hash=hash_password(body.password),
         nickname=body.nickname or body.username,
         email=body.email,
-        role=body.role,  # 后台可注册编辑：注册时直接选择 editor 身份
+        role=body.role,  # 注册身份：普通用户，或开关开启时的编辑
         status="active",
     )
     db.add(user)

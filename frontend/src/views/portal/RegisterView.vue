@@ -10,7 +10,9 @@
       </router-link>
 
       <h1 class="auth-card__title">注册账号</h1>
-      <p class="auth-card__subtitle">可选择注册为普通用户或编辑（编辑可写稿投稿）</p>
+      <p class="auth-card__subtitle">
+        {{ editorRegisterEnabled ? '可选择注册为普通用户或编辑（编辑可写稿投稿）' : '当前仅开放普通用户注册，编辑账号请联系管理员开通' }}
+      </p>
 
       <el-form ref="formRef" :model="form" :rules="rules" label-position="top" size="large">
         <el-form-item label="账号" prop="username">
@@ -28,7 +30,7 @@
         <el-form-item label="确认密码" prop="confirm">
           <el-input v-model="form.confirm" type="password" placeholder="再次输入密码" show-password autocomplete="new-password" />
         </el-form-item>
-        <el-form-item label="注册身份">
+        <el-form-item v-if="editorRegisterEnabled" label="注册身份">
           <el-radio-group v-model="form.role">
             <el-radio value="user">普通用户</el-radio>
             <el-radio value="editor">编辑（可写稿）</el-radio>
@@ -46,16 +48,18 @@
 </template>
 
 <script setup>
-import { reactive, ref } from 'vue'
+import { onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { authApi } from '../../api'
+import { authApi, portalApi } from '../../api'
 
 const route = useRoute()
 const router = useRouter()
 const formRef = ref()
 const loading = ref(false)
 const redirect = route.query.redirect || '/'
+// 是否允许注册为编辑（后台「门户设置」控制；默认开启）
+const editorRegisterEnabled = ref(true)
 
 const form = reactive({ username: '', nickname: '', email: '', password: '', confirm: '', role: 'user' })
 const rules = {
@@ -78,6 +82,17 @@ const rules = {
     },
   ],
 }
+
+// 拉取编辑注册策略：关闭时隐藏"编辑（可写稿）"选项
+onMounted(async () => {
+  try {
+    const res = await portalApi.registerEditor()
+    editorRegisterEnabled.value = res.enabled
+    if (!res.enabled && form.role === 'editor') form.role = 'user'
+  } catch {
+    // 拉取失败按开启处理，不阻塞注册
+  }
+})
 
 async function submit() {
   await formRef.value.validate()

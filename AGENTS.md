@@ -67,6 +67,33 @@ npm run dev
 - 凡修改前端样式（布局、颜色、间距、字体、主题换肤、响应式等），必须使用 **Chrome DevTools 进行 DOM 审核**验证，检查项包括：DOM 结构与类名挂载（如门户换肤的 `.theme-*` 是否挂到 PortalLayout 外壳）、元素的 computed style（计算样式）与 CSS 变量实际取值、响应式断点下的布局、控制台是否有样式相关报错。
 - 可用 skill：`chrome-devtools` / `chrome-devtools-cli`（DOM 与样式检查）、`debug-optimize-lcp`（首屏性能）、`a11y-debugging`（可访问性）；涉及换肤时同时遵守第 10 条的三处同步。
 
+## 开发流程规范（Skills 驱动，所有新功能/改动必须遵守）
+
+本项目的功能开发统一按以下流程执行，任何 AI 助手或开发者都应遵循：
+
+1. **先规格后代码**：新功能、跨模块改动、涉及数据表/接口变动的任务，必须先写规格文档到 `docs/`（结构参考 `spec-driven-development`：目标、数据结构、接口契约、前端交互、成功标准），规格经确认后再动手。
+2. **契约先行**：前后端接口先定契约（路径、请求/响应字段、错误语义、分页格式），再分别实现，遵循 `api-and-interface-design` 的 REST 规范（资源复数命名、PATCH 增量更新、分页、边界校验）。
+3. **增量实现**：按"后端模型 → 接口 → 前端页面 → 验证"的纵向切片逐个提交，每片保持系统可运行（`incremental-implementation`）；单次改动超过约 5 个文件或 100 行前必须完成当前切片验证。
+4. **测试驱动**：后端新增接口在 `backend/smoke_test.py` 增加对应冒烟断言；修复 bug 必须先写复现用例再修（`test-driven-development`）。前端用浏览器 DevTools 运行时验证（`browser-testing-with-devtools` / `chrome-devtools`）。
+5. **安全默认**：所有用户输入在接口边界校验并参数化查询；评论等 UGC 内容按纯文本处理，前端渲染必须转义，禁止直接 `v-html`（`security-and-hardening`）。
+6. **前端质量**：新页面/组件遵循项目设计令牌（`frontend/src/styles/tokens.css`）与门户主题体系（`themes.css`），不引入"AI 审美"默认样式；可参考 `frontend-ui-engineering`、`ui-ux-pro-max` 的设计规范。
+7. **评审收尾**：实现完成后自查（`code-review-and-quality` 五轴评审 + `code-simplification` 简化），确认无越界改动、无死代码、注释中文、命名与项目一致。
+8. **记录决策**：涉及数据表结构、接口契约、权限模型的决策，在规格文档中同步更新（`documentation-and-adrs`），规格与代码一同维护。
+
+常用 skill 映射：
+
+| 场景 | 使用的 skill |
+| --- | --- |
+| 需求不明确/新功能 | `interview-me` → `spec-driven-development` |
+| 接口/模块边界设计 | `api-and-interface-design` |
+| 任务拆解与规划 | `planning-and-task-breakdown` |
+| 后端/前端实现 | `incremental-implementation` + `test-driven-development` |
+| 用户输入/登录/权限 | `security-and-hardening` |
+| 前端 UI 实现 | `frontend-ui-engineering`（可配合 `ui-ux-pro-max` 取设计参考） |
+| 浏览器运行验证 | `browser-testing-with-devtools` / `chrome-devtools` |
+| 代码评审 | `code-review-and-quality` + `code-simplification` |
+| 上线/发布 | `shipping-and-launch` |
+
 ## 生产部署注意
 
 - `backend/app/config.py` 的 `SECRET_KEY` 与数据库密码需通过环境变量覆盖。

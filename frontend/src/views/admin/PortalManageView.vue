@@ -111,6 +111,7 @@
         <el-button type="primary" :loading="savingNotice" @click="saveModule('notice')">保存公告</el-button>
       </div>
     </section>
+
   </div>
 </template>
 
@@ -240,6 +241,7 @@ async function saveModule(key) {
     fn.value = false
   }
 }
+
 </script>
 
 <style scoped>
@@ -273,6 +275,12 @@ async function saveModule(key) {
   color: var(--color-text-muted);
   font-size: 13px;
   margin: 0 0 14px;
+}
+
+.panel__actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 4px;
 }
 
 .banner-editor {

@@ -69,6 +69,119 @@
         <p v-if="!auth.isLoggedIn" class="detail__login-tip">
           <router-link to="/login">登录</router-link> 后可点赞、收藏、转发；<!--无需登录，同一浏览器只统计一次!-->
         </p>
+
+        <!-- 评论区：登录可发表/回复，未登录提示登录；评论内容按纯文本插值渲染 -->
+        <section class="comments" aria-label="文稿评论">
+          <h2 class="comments__title">评论（{{ commentTotal }}）</h2>
+
+          <!-- 发表区 -->
+          <div v-if="auth.isLoggedIn" class="comments__composer">
+            <el-avatar :size="36" :src="auth.user?.avatar || undefined">
+              {{ (auth.user?.nickname || auth.user?.username || '我').slice(0, 1) }}
+            </el-avatar>
+            <div class="comments__composer-main">
+              <el-input
+                v-model="newComment"
+                type="textarea"
+                :rows="3"
+                maxlength="2000"
+                show-word-limit
+                placeholder="写下你的评论…"
+                resize="none"
+              />
+              <div class="comments__composer-foot">
+                <el-button
+                  type="primary"
+                  :loading="submitting"
+                  :disabled="!newComment.trim()"
+                  @click="submitComment"
+                >发表评论</el-button>
+              </div>
+            </div>
+          </div>
+          <div v-else class="comments__login-tip">
+            <router-link :to="{ name: 'login', query: { redirect: route.fullPath } }">登录</router-link>
+            后可参与评论
+          </div>
+
+          <!-- 评论列表 -->
+          <div v-loading="commentLoading" class="comments__list-wrap">
+            <ul v-if="comments.length" class="comments__list">
+              <li v-for="c in comments" :key="c.id" class="comment">
+                <el-avatar :size="36" :src="c.avatar || undefined">
+                  {{ (c.nickname || '?').slice(0, 1) }}
+                </el-avatar>
+                <div class="comment__body">
+                  <div class="comment__meta">
+                    <span class="comment__name">{{ c.nickname }}</span>
+                    <time class="comment__time">{{ c.created_at }}</time>
+                    <button
+                      v-if="c.is_mine || auth.user?.role === 'admin'"
+                      class="comment__del"
+                      @click="removeComment(c)"
+                    >删除</button>
+                  </div>
+                  <p class="comment__content">{{ c.content }}</p>
+
+                  <button
+                    v-if="auth.isLoggedIn"
+                    class="comment__reply-btn"
+                    @click="toggleReply(c)"
+                  >{{ replyTargetId === c.id ? '收起回复' : '回复' }}</button>
+
+                  <!-- 回复输入框 -->
+                  <div v-if="replyTargetId === c.id" class="comment__reply-composer">
+                    <el-input
+                      v-model="replyContent"
+                      type="textarea"
+                      :rows="2"
+                      maxlength="2000"
+                      :placeholder="`回复 ${c.nickname}…`"
+                      resize="none"
+                    />
+                    <div class="comment__reply-actions">
+                      <el-button size="small" @click="cancelReply">取消</el-button>
+                      <el-button
+                        size="small"
+                        type="primary"
+                        :loading="submitting"
+                        :disabled="!replyContent.trim()"
+                        @click="submitReply(c)"
+                      >回复</el-button>
+                    </div>
+                  </div>
+
+                  <!-- 回复列表 -->
+                  <ul v-if="c.replies && c.replies.length" class="comment__replies">
+                    <li v-for="r in c.replies" :key="r.id" class="comment__reply">
+                      <el-avatar :size="30" :src="r.avatar || undefined">
+                        {{ (r.nickname || '?').slice(0, 1) }}
+                      </el-avatar>
+                      <div class="comment__reply-main">
+                        <div class="comment__meta">
+                          <span class="comment__name">{{ r.nickname }}</span>
+                          <time class="comment__time">{{ r.created_at }}</time>
+                          <button
+                            v-if="r.is_mine || auth.user?.role === 'admin'"
+                            class="comment__del"
+                            @click="removeReply(c, r)"
+                          >删除</button>
+                        </div>
+                        <p class="comment__content">{{ r.content }}</p>
+                      </div>
+                    </li>
+                  </ul>
+                </div>
+              </li>
+            </ul>
+            <p v-else-if="!commentLoading" class="comments__empty">还没有评论，来抢沙发～</p>
+          </div>
+
+          <!-- 加载更多 -->
+          <div v-if="commentTotal > comments.length" class="comments__more">
+            <el-button link type="primary" @click="loadMoreComments">加载更多评论</el-button>
+          </div>
+        </section>
       </template>
     </article>
 
@@ -106,8 +219,8 @@
 <script setup>
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
-import { ElMessage } from 'element-plus'
-import { articleApi, eventApi, historyApi, interactionApi } from '../../api'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import { articleApi, commentApi, eventApi, historyApi, interactionApi } from '../../api'
 import { useAuthStore } from '../../stores/auth'
 
 const route = useRoute()
@@ -118,6 +231,16 @@ const loading = ref(true)
 const liked = ref(false)
 const favorited = ref(false)
 const disliked = ref(false)
+// 评论状态
+const comments = ref([])
+const commentTotal = ref(0)
+const commentPage = ref(1)
+const commentPageSize = 10
+const commentLoading = ref(false)
+const newComment = ref('')
+const replyTargetId = ref(null)
+const replyContent = ref('')
+const submitting = ref(false)
 
 // 观看时长统计：进入页面记起点，离开/切后台时上报（单次会话上限 600 秒）
 const watchStart = ref(Date.now())
@@ -134,6 +257,7 @@ async function loadArticle(id) {
   favorited.value = false
   disliked.value = false
   durationReported.value = false
+  resetComments()
   try {
     const [detail, statusRes] = await Promise.all([
       articleApi.detail(id),
@@ -152,6 +276,8 @@ async function loadArticle(id) {
     // 相关推荐：同栏目已发布文稿（后端按发布时间新到旧返回）
     const res = await articleApi.related(id, { limit: 6 })
     related.value = res.items
+    // 评论区：首次进入加载第一页
+    loadComments()
     // 先移除再添加，避免多次切换文章时重复绑定
     window.removeEventListener('pagehide', onPageHide)
     window.addEventListener('pagehide', onPageHide)
@@ -179,6 +305,134 @@ onBeforeUnmount(() => {
 
 function onPageHide() {
   reportWatchDuration()
+}
+
+// 切换文章时重置评论区
+function resetComments() {
+  comments.value = []
+  commentTotal.value = 0
+  commentPage.value = 1
+  newComment.value = ''
+  replyTargetId.value = null
+  replyContent.value = ''
+}
+
+// 加载评论列表（分页追加顶层评论，回复随顶层评论一起返回）
+async function loadComments() {
+  if (!article.value) return
+  commentLoading.value = true
+  try {
+    const res = await commentApi.list({
+      article_id: article.value.id,
+      page: commentPage.value,
+      page_size: commentPageSize,
+    })
+    comments.value = commentPage.value === 1 ? res.items : [...comments.value, ...res.items]
+    commentTotal.value = res.total
+  } catch (e) {
+    ElMessage.error(String(e))
+  } finally {
+    commentLoading.value = false
+  }
+}
+
+function loadMoreComments() {
+  commentPage.value += 1
+  loadComments()
+}
+
+// 发表顶层评论
+async function submitComment() {
+  const content = newComment.value.trim()
+  if (!content) return
+  submitting.value = true
+  try {
+    const res = await commentApi.create({ article_id: article.value.id, content })
+    comments.value.unshift({ ...res.comment, replies: [] })
+    commentTotal.value += 1
+    newComment.value = ''
+    ElMessage.success('评论成功')
+  } catch (e) {
+    ElMessage.error(String(e))
+  } finally {
+    submitting.value = false
+  }
+}
+
+// 展开/收起某条评论的回复输入框
+function toggleReply(c) {
+  replyTargetId.value = replyTargetId.value === c.id ? null : c.id
+  replyContent.value = ''
+}
+
+function cancelReply() {
+  replyTargetId.value = null
+  replyContent.value = ''
+}
+
+// 发表回复
+async function submitReply(c) {
+  const content = replyContent.value.trim()
+  if (!content) return
+  submitting.value = true
+  try {
+    const res = await commentApi.create({
+      article_id: article.value.id,
+      content,
+      parent_id: c.id,
+    })
+    c.replies = [...(c.replies || []), res.comment]
+    commentTotal.value += 1
+    cancelReply()
+    ElMessage.success('回复成功')
+  } catch (e) {
+    ElMessage.error(String(e))
+  } finally {
+    submitting.value = false
+  }
+}
+
+// 删除顶层评论（其回复由后端级联删除）
+async function removeComment(c) {
+  try {
+    await ElMessageBox.confirm('删除该评论会同时删除其全部回复，确定删除吗？', '删除评论', {
+      type: 'warning',
+      confirmButtonText: '删除',
+      cancelButtonText: '取消',
+    })
+  } catch {
+    return // 用户取消
+  }
+  try {
+    await commentApi.remove(c.id)
+    comments.value = comments.value.filter((x) => x.id !== c.id)
+    commentTotal.value = Math.max(0, commentTotal.value - 1 - (c.replies?.length || 0))
+    if (replyTargetId.value === c.id) cancelReply()
+    ElMessage.success('评论已删除')
+  } catch (e) {
+    ElMessage.error(String(e))
+  }
+}
+
+// 删除单条回复
+async function removeReply(c, r) {
+  try {
+    await ElMessageBox.confirm('确定删除这条回复吗？', '删除回复', {
+      type: 'warning',
+      confirmButtonText: '删除',
+      cancelButtonText: '取消',
+    })
+  } catch {
+    return
+  }
+  try {
+    await commentApi.remove(r.id)
+    c.replies = c.replies.filter((x) => x.id !== r.id)
+    commentTotal.value = Math.max(0, commentTotal.value - 1)
+    ElMessage.success('回复已删除')
+  } catch (e) {
+    ElMessage.error(String(e))
+  }
 }
 
 // 上报本次观看时长：取实际停留秒数并封顶 600 秒（10 分钟），只上报一次
@@ -403,6 +657,188 @@ function getFingerprint() {
   margin: var(--space-3) 0 0;
   font-size: var(--text-xs);
   color: var(--color-ink-3);
+}
+
+/* ---------- 评论区 ---------- */
+.comments {
+  margin-top: var(--space-6);
+  padding-top: var(--space-5);
+  border-top: 2px solid var(--color-ink);
+}
+
+.comments__title {
+  font-family: var(--font-heading);
+  font-size: var(--text-xl);
+  font-weight: 700;
+  color: var(--color-ink);
+  margin: 0 0 var(--space-4);
+}
+
+.comments__composer {
+  display: flex;
+  gap: var(--space-3);
+  margin-bottom: var(--space-5);
+}
+
+.comments__composer-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.comments__composer-foot {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: var(--space-2);
+}
+
+.comments__login-tip {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-1);
+  padding: var(--space-4);
+  border: var(--rule) dashed var(--color-rule-strong);
+  border-radius: var(--radius-sm);
+  color: var(--color-ink-3);
+  font-size: var(--text-sm);
+  margin-bottom: var(--space-5);
+}
+
+.comments__login-tip a {
+  color: var(--color-accent);
+  font-weight: 600;
+}
+
+.comments__list-wrap {
+  min-height: 40px;
+}
+
+.comments__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.comments__list > li + li {
+  border-top: var(--rule) solid var(--color-rule);
+}
+
+.comment {
+  display: flex;
+  gap: var(--space-3);
+  padding: var(--space-4) 0;
+}
+
+.comment__body {
+  flex: 1;
+  min-width: 0;
+}
+
+.comment__meta {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-bottom: var(--space-1);
+}
+
+.comment__name {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--color-ink);
+}
+
+.comment__time {
+  font-size: var(--text-xs);
+  color: var(--color-ink-3);
+}
+
+.comment__del {
+  margin-left: auto;
+  border: none;
+  background: none;
+  color: var(--color-ink-3);
+  font-size: var(--text-xs);
+  cursor: pointer;
+  padding: 4px 8px;
+  transition: color var(--dur-base) var(--ease-out);
+}
+
+.comment__del:hover {
+  color: var(--color-danger, #c0392b);
+  text-decoration: underline;
+}
+
+.comment__content {
+  margin: 0 0 var(--space-2);
+  color: var(--color-ink-2);
+  font-size: var(--text-sm);
+  line-height: var(--leading-normal);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.comment__reply-btn {
+  border: none;
+  background: none;
+  color: var(--color-accent);
+  font-size: var(--text-xs);
+  cursor: pointer;
+  padding: 2px 0;
+}
+
+.comment__reply-composer {
+  margin: var(--space-3) 0 var(--space-2);
+  padding: var(--space-3);
+  background: var(--color-primary-soft);
+  border: var(--rule) solid var(--color-rule);
+  border-radius: var(--radius-sm);
+}
+
+.comment__reply-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+
+.comment__replies {
+  list-style: none;
+  margin: var(--space-3) 0 0;
+  padding: var(--space-3);
+  background: var(--color-primary-soft);
+  border-radius: var(--radius-sm);
+}
+
+.comment__reply {
+  display: flex;
+  gap: var(--space-2);
+  padding: var(--space-2) 0;
+}
+
+.comment__reply + .comment__reply {
+  border-top: var(--rule) solid var(--color-rule);
+}
+
+.comment__reply-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.comment__reply-main .comment__del {
+  margin-left: auto;
+}
+
+.comments__empty {
+  padding: var(--space-5) 0;
+  text-align: center;
+  color: var(--color-ink-3);
+  font-size: var(--text-sm);
+}
+
+.comments__more {
+  display: flex;
+  justify-content: center;
+  padding-top: var(--space-3);
 }
 
 .related {

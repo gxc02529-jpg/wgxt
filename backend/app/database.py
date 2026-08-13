@@ -117,6 +117,40 @@ def ensure_schema_compat() -> None:
             )
             print("已迁移：articles.content_source 新增成功")
 
+    # 幂等新增 users.points 积分字段（老库补列，重复执行无副作用）
+    with engine.begin() as conn:
+        exists = conn.execute(
+            text(
+                "SELECT COLUMN_NAME FROM information_schema.COLUMNS "
+                "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND COLUMN_NAME = 'points'"
+            )
+        ).first()
+        if not exists:
+            conn.execute(
+                text(
+                    "ALTER TABLE users ADD COLUMN points INT NOT NULL DEFAULT 0 "
+                    "COMMENT '用户积分'"
+                )
+            )
+            print("已迁移：users.points 新增成功")
+
+    # 幂等新增 resources.storage 存储位置字段（local/oss，老库补列）
+    with engine.begin() as conn:
+        exists = conn.execute(
+            text(
+                "SELECT COLUMN_NAME FROM information_schema.COLUMNS "
+                "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'resources' AND COLUMN_NAME = 'storage'"
+            )
+        ).first()
+        if not exists:
+            conn.execute(
+                text(
+                    "ALTER TABLE resources ADD COLUMN storage VARCHAR(10) NOT NULL DEFAULT 'local' "
+                    "COMMENT '存储位置（local/oss）'"
+                )
+            )
+            print("已迁移：resources.storage 新增成功")
+
     # 老数据回填：content_source 为空的行从 content 剥离 HTML 生成纯文本
     from sqlalchemy import or_
 

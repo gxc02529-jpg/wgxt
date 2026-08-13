@@ -1,83 +1,103 @@
 <template>
   <div class="behavior-admin">
-    <div class="page-head">
-      <h1 class="page-title">用户行为</h1>
+    <div class="admin-head">
+      <span class="admin-head__icon">
+        <el-icon><DataAnalysis /></el-icon>
+      </span>
+      <div class="admin-head__text">
+        <h1 class="admin-head__title">用户行为</h1>
+        <p class="admin-head__sub">观看历史（含累计时长）与不感兴趣反馈，供推荐与运营分析使用</p>
+      </div>
     </div>
 
     <el-tabs v-model="activeTab" @tab-change="onTabChange">
       <!-- 观看历史 -->
       <el-tab-pane label="观看历史" name="history">
-        <div class="filter-bar">
-          <el-input
-            v-model="keyword"
-            placeholder="搜索用户名 / 昵称 / 文稿标题"
-            clearable
-            style="width: 300px"
-            @keyup.enter="load"
-            @clear="load"
-          />
-          <el-button type="primary" @click="load">查询</el-button>
-        </div>
-        <el-alert
-          class="summary-tip"
-          type="info"
-          :closable="false"
-          show-icon
-          :title="`共 ${total} 条观看记录，累计观看时长 ${formatDuration(totalWatchSeconds)}`"
-        />
-        <el-table :data="items" v-loading="loading">
-          <el-table-column label="用户" width="160">
-            <template #default="{ row }">{{ row.nickname }}（{{ row.username }}）</template>
-          </el-table-column>
-          <el-table-column prop="article_title" label="文稿" min-width="240" show-overflow-tooltip />
-          <el-table-column label="最近观看时间" width="170">
-            <template #default="{ row }">{{ row.viewed_at }}</template>
-          </el-table-column>
-          <el-table-column label="累计观看时长" width="130">
-            <template #default="{ row }">{{ formatDuration(row.watch_seconds) }}</template>
-          </el-table-column>
-          <el-table-column prop="watch_count" label="观看次数" width="90" />
-          <el-table-column label="操作" width="90" fixed="right">
-            <template #default="{ row }">
-              <el-button link type="primary" @click="openArticle(row.article_id)">查看文稿</el-button>
-            </template>
-          </el-table-column>
-        </el-table>
-        <div class="pager">
-          <el-pagination
-            layout="prev, pager, next"
-            :total="total"
-            :page-size="pageSize"
-            :current-page="page"
-            @current-change="load"
-          />
+        <div class="admin-card">
+          <div class="table-toolbar">
+            <el-input
+              v-model="keyword"
+              placeholder="搜索用户名 / 昵称 / 文稿标题"
+              clearable
+              style="width: 300px"
+              @keyup.enter="load"
+              @clear="load"
+            />
+            <el-button type="primary" @click="load">查询</el-button>
+            <span class="admin-count">共 <strong>{{ total }}</strong> 条观看记录，累计 <strong>{{ formatDuration(totalWatchSeconds) }}</strong></span>
+          </div>
+          <el-table :data="items" v-loading="loading">
+            <el-table-column label="用户" min-width="160">
+              <template #default="{ row }">
+                <div class="cell-title">
+                  <span class="cell-title__main">{{ row.nickname }}</span>
+                  <span class="cell-title__sub">@{{ row.username }}</span>
+                </div>
+              </template>
+            </el-table-column>
+            <el-table-column prop="article_title" label="文稿" min-width="240" show-overflow-tooltip />
+            <el-table-column label="最近观看时间" width="170">
+              <template #default="{ row }">{{ row.viewed_at }}</template>
+            </el-table-column>
+            <el-table-column label="累计观看时长" width="130">
+              <template #default="{ row }">{{ formatDuration(row.watch_seconds) }}</template>
+            </el-table-column>
+            <el-table-column prop="watch_count" label="观看次数" width="90" />
+            <el-table-column label="操作" width="100" fixed="right">
+              <template #default="{ row }">
+                <div class="row-actions">
+                  <el-button link type="primary" @click="openArticle(row.article_id)">查看文稿</el-button>
+                </div>
+              </template>
+            </el-table-column>
+          </el-table>
+          <div class="admin-pager">
+            <span class="admin-pager__info">共 {{ total }} 条记录</span>
+            <el-pagination
+              layout="prev, pager, next"
+              :total="total"
+              :page-size="pageSize"
+              :current-page="page"
+              @current-change="handleHistoryPage"
+            />
+          </div>
         </div>
       </el-tab-pane>
 
       <!-- 不感兴趣 -->
       <el-tab-pane label="不感兴趣" name="dislikes">
-        <el-table :data="dislikeItems" v-loading="dislikeLoading">
-          <el-table-column label="用户" width="160">
-            <template #default="{ row }">{{ row.nickname }}（{{ row.username }}）</template>
-          </el-table-column>
-          <el-table-column prop="article_title" label="文稿" min-width="240" show-overflow-tooltip />
-          <el-table-column label="标记时间" width="170">
-            <template #default="{ row }">{{ row.created_at }}</template>
-          </el-table-column>
-          <el-table-column label="操作" width="90" fixed="right">
-            <template #default="{ row }">
-              <el-button link type="primary" @click="openArticle(row.article_id)">查看文稿</el-button>
-            </template>
-          </el-table-column>
-        </el-table>
-        <div class="pager">
-          <el-pagination
-            layout="prev, pager, next"
-            :total="dislikeTotal"
-            :page-size="pageSize"
-            :current-page="dislikePage"
-            @current-change="loadDislikes"
-          />
+        <div class="admin-card">
+          <el-table :data="dislikeItems" v-loading="dislikeLoading">
+            <el-table-column label="用户" min-width="160">
+              <template #default="{ row }">
+                <div class="cell-title">
+                  <span class="cell-title__main">{{ row.nickname }}</span>
+                  <span class="cell-title__sub">@{{ row.username }}</span>
+                </div>
+              </template>
+            </el-table-column>
+            <el-table-column prop="article_title" label="文稿" min-width="240" show-overflow-tooltip />
+            <el-table-column label="标记时间" width="170">
+              <template #default="{ row }">{{ row.created_at }}</template>
+            </el-table-column>
+            <el-table-column label="操作" width="100" fixed="right">
+              <template #default="{ row }">
+                <div class="row-actions">
+                  <el-button link type="primary" @click="openArticle(row.article_id)">查看文稿</el-button>
+                </div>
+              </template>
+            </el-table-column>
+          </el-table>
+          <div class="admin-pager">
+            <span class="admin-pager__info">共 {{ dislikeTotal }} 条记录</span>
+            <el-pagination
+              layout="prev, pager, next"
+              :total="dislikeTotal"
+              :page-size="pageSize"
+              :current-page="dislikePage"
+              @current-change="handleDislikePage"
+            />
+          </div>
         </div>
       </el-tab-pane>
     </el-tabs>
@@ -87,6 +107,7 @@
 <script setup>
 import { onMounted, ref } from 'vue'
 import { ElMessage } from 'element-plus'
+import { DataAnalysis } from '@element-plus/icons-vue'
 import { behaviorApi } from '../../api'
 
 const activeTab = ref('history')
@@ -160,6 +181,17 @@ function onTabChange() {
   }
 }
 
+// 分页切换：显式接收数字页码，避免事件对象被当作页码
+function handleHistoryPage(p) {
+  page.value = Number(p) || 1
+  load()
+}
+
+function handleDislikePage(p) {
+  dislikePage.value = Number(p) || 1
+  loadDislikes()
+}
+
 function openArticle(id) {
   window.open(`/article/${id}`, '_blank', 'noopener')
 }
@@ -168,30 +200,4 @@ onMounted(load)
 </script>
 
 <style scoped>
-.page-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 16px;
-}
-
-.page-title {
-  font-size: 24px;
-}
-
-.filter-bar {
-  display: flex;
-  gap: 12px;
-  margin-bottom: 12px;
-}
-
-.summary-tip {
-  margin-bottom: 12px;
-}
-
-.pager {
-  display: flex;
-  justify-content: center;
-  margin-top: 16px;
-}
 </style>

@@ -70,6 +70,30 @@ export const historyApi = {
   reportDuration: (articleId, seconds) => client.post(`/history/${articleId}/duration`, { seconds }),
 }
 
+// ---- 评论（前台：公开列表；发表/删除需登录）----
+export const commentApi = {
+  list: (params) => client.get('/comments', { params }),
+  create: (data) => client.post('/comments', data),
+  remove: (id) => client.delete(`/comments/${id}`),
+}
+
+// ---- 后台评论管理（管理员）----
+export const adminCommentApi = {
+  list: (params) => client.get('/admin/comments', { params }),
+}
+
+// ---- 积分（前台：签到与我的积分；均需登录）----
+export const pointsApi = {
+  me: () => client.get('/points/me'),
+  checkin: () => client.post('/points/checkin'),
+}
+
+// ---- 后台积分管理（管理员）----
+export const adminPointsApi = {
+  list: (params) => client.get('/admin/points', { params }),
+  adjust: (userId, delta) => client.put(`/admin/points/${userId}`, { delta }),
+}
+
 // ---- 后台用户行为（管理员）----
 export const behaviorApi = {
   viewHistory: (params) => client.get('/admin/behavior/history', { params }),
@@ -100,6 +124,12 @@ export const portalApi = {
   create: (data) => client.post('/portal/modules', data),
   update: (key, data) => client.put(`/portal/modules/${key}`, data),
   grayscale: () => client.get('/portal/grayscale'),
+  // 注册为编辑的开放策略（公开读；管理员写）
+  registerEditor: () => client.get('/portal/register-editor'),
+  setRegisterEditor: (enabled) => client.put('/portal/register-editor', { enabled }),
+  // S3 兼容对象存储配置（管理员；endpoint 留空 = 本地存储）
+  ossConfig: () => client.get('/portal/oss-config'),
+  setOssConfig: (data) => client.put('/portal/oss-config', data),
 }
 
 // ---- 门户主题 ----

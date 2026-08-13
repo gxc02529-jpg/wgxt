@@ -1,73 +1,84 @@
 <template>
   <div class="user-admin">
-    <div class="page-head">
-      <h1 class="page-title">用户管理</h1>
-      <el-button type="primary" @click="openForm()">创建账号</el-button>
+    <div class="admin-head">
+      <span class="admin-head__icon">
+        <el-icon><User /></el-icon>
+      </span>
+      <div class="admin-head__text">
+        <h1 class="admin-head__title">用户管理</h1>
+        <p class="admin-head__sub">账号、角色与状态管理，可创建管理员 / 编辑 / 普通用户</p>
+      </div>
+      <div class="admin-head__actions">
+        <el-button type="primary" @click="openForm()">创建账号</el-button>
+      </div>
     </div>
 
-    <div class="filters">
-      <el-input v-model="filters.keyword" placeholder="账号/昵称" clearable style="width: 200px" @keyup.enter="reload" />
-      <el-select v-model="filters.role" placeholder="全部角色" clearable style="width: 130px" @change="reload">
-        <el-option label="普通用户" value="user" />
-        <el-option label="编辑" value="editor" />
-        <el-option label="管理员" value="moderator" />
-        <el-option label="系统管理员" value="admin" />
-      </el-select>
-      <el-select v-model="filters.status" placeholder="全部状态" clearable style="width: 130px" @change="reload">
-        <el-option label="正常" value="active" />
-        <el-option label="冻结" value="frozen" />
-      </el-select>
-      <el-button @click="reload">查询</el-button>
-    </div>
+    <div class="admin-card">
+      <div class="table-toolbar">
+        <el-input v-model="filters.keyword" placeholder="账号 / 昵称" clearable style="width: 200px" @keyup.enter="reload" @clear="reload" />
+        <el-select v-model="filters.role" placeholder="全部角色" clearable style="width: 130px" @change="reload">
+          <el-option label="普通用户" value="user" />
+          <el-option label="编辑" value="editor" />
+          <el-option label="管理员" value="moderator" />
+          <el-option label="系统管理员" value="admin" />
+        </el-select>
+        <el-select v-model="filters.status" placeholder="全部状态" clearable style="width: 130px" @change="reload">
+          <el-option label="正常" value="active" />
+          <el-option label="冻结" value="frozen" />
+        </el-select>
+        <el-button type="primary" @click="reload">查询</el-button>
+      </div>
 
-    <el-table :data="users" v-loading="loading">
-      <el-table-column prop="id" label="ID" width="64" />
-      <el-table-column label="用户" min-width="160">
-        <template #default="{ row }">
-          <div class="user-cell">
-            <el-avatar :size="30" :src="row.avatar || undefined">{{ (row.nickname || row.username).slice(0, 1) }}</el-avatar>
-            <div>
-              <div>{{ row.nickname || row.username }}</div>
-              <div class="user-cell__name">@{{ row.username }}</div>
+      <el-table :data="users" v-loading="loading">
+        <el-table-column prop="id" label="ID" width="64" />
+        <el-table-column label="用户" min-width="180">
+          <template #default="{ row }">
+            <div class="cell-media">
+              <el-avatar :size="34" :src="row.avatar || undefined">{{ (row.nickname || row.username).slice(0, 1) }}</el-avatar>
+              <div class="cell-title">
+                <span class="cell-title__main">{{ row.nickname || row.username }}</span>
+                <span class="cell-title__sub">@{{ row.username }}</span>
+              </div>
             </div>
-          </div>
-        </template>
-      </el-table-column>
-      <el-table-column prop="email" label="邮箱" width="180" />
-      <el-table-column label="角色" width="100">
-        <template #default="{ row }">
-          <el-tag size="small" :type="roleTagType[row.role]">
-            {{ roleLabel[row.role] }}
-          </el-tag>
-        </template>
-      </el-table-column>
-      <el-table-column label="状态" width="90">
-        <template #default="{ row }">
-          <el-tag size="small" :type="row.status === 'active' ? 'success' : 'danger'">
-            {{ row.status === 'active' ? '正常' : '冻结' }}
-          </el-tag>
-        </template>
-      </el-table-column>
-      <el-table-column prop="created_at" label="注册时间" width="160" />
-      <el-table-column label="操作" width="200" fixed="right">
-        <template #default="{ row }">
-          <el-button link type="primary" @click="openForm(row)">编辑</el-button>
-          <el-button link :type="row.status === 'active' ? 'warning' : 'success'" @click="toggleFreeze(row)">
-            {{ row.status === 'active' ? '冻结' : '解冻' }}
-          </el-button>
-          <el-button link type="danger" @click="remove(row)">删除</el-button>
-        </template>
-      </el-table-column>
-    </el-table>
+          </template>
+        </el-table-column>
+        <el-table-column prop="email" label="邮箱" width="180" show-overflow-tooltip />
+        <el-table-column label="角色" width="110">
+          <template #default="{ row }">
+            <span class="status-badge" :class="roleBadge[row.role]">{{ roleLabel[row.role] }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="状态" width="90">
+          <template #default="{ row }">
+            <span class="status-badge" :class="row.status === 'active' ? 'status-badge--green' : 'status-badge--red'">
+              {{ row.status === 'active' ? '正常' : '冻结' }}
+            </span>
+          </template>
+        </el-table-column>
+        <el-table-column prop="created_at" label="注册时间" width="160" />
+        <el-table-column label="操作" width="200" fixed="right">
+          <template #default="{ row }">
+            <div class="row-actions">
+              <el-button link type="primary" @click="openForm(row)">编辑</el-button>
+              <el-button link :type="row.status === 'active' ? 'warning' : 'success'" @click="toggleFreeze(row)">
+                {{ row.status === 'active' ? '冻结' : '解冻' }}
+              </el-button>
+              <el-button link type="danger" @click="remove(row)">删除</el-button>
+            </div>
+          </template>
+        </el-table-column>
+      </el-table>
 
-    <div class="pager">
-      <el-pagination
-        layout="total, prev, pager, next"
-        :total="total"
-        :page-size="pageSize"
-        :current-page="page"
-        @current-change="changePage"
-      />
+      <div class="admin-pager">
+        <span class="admin-pager__info">共 {{ total }} 个账号</span>
+        <el-pagination
+          layout="total, prev, pager, next"
+          :total="total"
+          :page-size="pageSize"
+          :current-page="page"
+          @current-change="changePage"
+        />
+      </div>
     </div>
 
     <el-dialog v-model="dialogVisible" :title="editing ? '编辑用户' : '创建账号'" width="480px">
@@ -110,10 +121,11 @@
 <script setup>
 import { onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { User } from '@element-plus/icons-vue'
 import { userApi } from '../../api'
 
 const roleLabel = { user: '普通用户', editor: '编辑', moderator: '管理员', admin: '系统管理员' }
-const roleTagType = { user: 'info', editor: 'warning', moderator: 'primary', admin: 'danger' }
+const roleBadge = { user: 'status-badge--gray', editor: 'status-badge--orange', moderator: 'status-badge--blue', admin: 'status-badge--red' }
 const users = ref([])
 const total = ref(0)
 const page = ref(1)
@@ -230,38 +242,5 @@ onMounted(load)
 </script>
 
 <style scoped>
-.page-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 16px;
-}
-
-.page-title {
-  font-size: 24px;
-}
-
-.filters {
-  display: flex;
-  gap: 10px;
-  margin-bottom: 16px;
-}
-
-.user-cell {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.user-cell__name {
-  color: var(--color-text-muted);
-  font-size: 12px;
-}
-
-.pager {
-  display: flex;
-  justify-content: flex-end;
-  margin-top: 16px;
-}
 </style>
 

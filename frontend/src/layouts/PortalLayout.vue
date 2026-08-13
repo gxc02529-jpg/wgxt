@@ -30,7 +30,7 @@
 
         <div class="user-actions">
           <template v-if="auth.isLoggedIn">
-            <el-dropdown trigger="click">
+            <el-dropdown trigger="click" @visible-change="onUserMenuOpen">
               <button class="user-btn">
                 <el-avatar :size="28" :src="auth.user?.avatar || undefined">
                   {{ (auth.user?.nickname || auth.user?.username || 'U').slice(0, 1) }}
@@ -39,6 +39,17 @@
               </button>
               <template #dropdown>
                 <el-dropdown-menu>
+                  <!-- 积分展示 + 每日签到 -->
+                  <el-dropdown-item disabled class="user-menu__points">
+                    <span>我的积分</span>
+                    <strong>{{ userPoints }}</strong>
+                  </el-dropdown-item>
+                  <el-dropdown-item
+                    :disabled="todayCheckedIn || checkingIn"
+                    @click="doCheckin"
+                  >
+                    {{ todayCheckedIn ? '今日已签到 ✓' : '每日签到' }}
+                  </el-dropdown-item>
                   <el-dropdown-item @click="router.push('/favorites')">我的收藏</el-dropdown-item>
                   <el-dropdown-item @click="router.push('/history')">观看历史</el-dropdown-item>
                   <el-dropdown-item v-if="auth.isEditor" @click="router.push('/admin/articles')">
@@ -103,7 +114,7 @@
 import { computed, onMounted, onUnmounted, ref, watchEffect } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { categoryApi, portalApi, themeApi } from '../api'
+import { categoryApi, pointsApi, portalApi, themeApi } from '../api'
 import { useAuthStore } from '../stores/auth'
 
 const route = useRoute()
@@ -113,6 +124,10 @@ const categories = ref([])
 const keyword = ref('')
 const theme = ref('editorial')
 const grayscale = ref(false)
+// 积分签到状态：菜单打开时刷新；签到成功更新
+const todayCheckedIn = ref(false)
+const checkingIn = ref(false)
+const userPoints = computed(() => auth.user?.points ?? 0)
 
 // 当前栏目高亮（从路由 slug 判断；computed 保证切换栏目时高亮同步更新）
 const currentSlug = computed(() => route.params.slug || '')
@@ -164,6 +179,42 @@ onMounted(async () => {
 function doSearch() {
   if (!keyword.value.trim()) return
   router.push({ name: 'search', query: { q: keyword.value.trim() } })
+}
+
+// 打开用户菜单时刷新积分与今日签到状态
+async function onUserMenuOpen(visible) {
+  if (!visible || !auth.isLoggedIn) return
+  try {
+    const res = await pointsApi.me()
+    todayCheckedIn.value = res.today_checked_in
+    if (auth.user && auth.user.points !== res.points) {
+      auth.setUser({ ...auth.user, points: res.points })
+    }
+  } catch {
+    // 刷新失败不阻塞菜单使用，签到接口会再次给出明确错误
+  }
+}
+
+// 每日签到：积分范围由后台系统设置控制（默认 1~5），每天一次
+async function doCheckin() {
+  if (todayCheckedIn.value || checkingIn.value) return
+  checkingIn.value = true
+  try {
+    const res = await pointsApi.checkin()
+    todayCheckedIn.value = true
+    auth.setUser({ ...auth.user, points: res.points })
+    ElMessage.success(res.message || '签到成功')
+  } catch (e) {
+    const detail = e?.response?.data?.detail
+    if (detail && String(detail).includes('已签到')) {
+      todayCheckedIn.value = true
+      ElMessage.info(String(detail))
+    } else {
+      ElMessage.error(detail || e?.message || '签到失败')
+    }
+  } finally {
+    checkingIn.value = false
+  }
 }
 
 function logout() {
@@ -317,6 +368,22 @@ function logout() {
 
 .user-btn:hover {
   background: var(--color-paper-2);
+}
+
+/* 用户菜单积分展示项：下拉浮层渲染在 body 下，需全局样式（主题类已同步到 body） */
+:global(.user-menu__points) {
+  display: flex !important;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  font-size: 13px;
+  color: var(--color-text-secondary);
+}
+
+:global(.user-menu__points strong) {
+  font-size: 16px;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-accent, #2563eb);
 }
 
 .masthead__nav {

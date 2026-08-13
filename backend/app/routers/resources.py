@@ -3,6 +3,7 @@
 import os
 import uuid
 from datetime import datetime
+from io import BytesIO
 
 import httpx
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
@@ -15,6 +16,7 @@ from ..database import get_db
 from ..models.resource import Resource
 from ..models.user import User
 from ..schemas.resource import ResourceUrlIn
+from ..services.oss_service import delete_object, get_oss_config, upload_bytes
 
 router = APIRouter(prefix="/resources", tags=["资源"])
 
@@ -39,6 +41,28 @@ CONTENT_TYPE_EXT = {
 }
 
 
+def _save_bytes(db: Session, data: bytes, content_type: str, ext: str) -> tuple[str, str, str]:
+    """按 OSS 配置分流保存文件，返回 (stored_name, url, storage)。
+
+    - 已配置 OSS：上传到对象存储，URL 为公网地址；上传失败明确报错，不回退本地。
+    - 未配置：维持本地 uploads/ 存储。
+    """
+    oss_cfg = get_oss_config(db)
+    if oss_cfg:
+        try:
+            url, key = upload_bytes(oss_cfg, data, content_type, ext)
+        except Exception as e:
+            raise HTTPException(502, f"对象存储上传失败，请检查 OSS 配置：{e}") from None
+        return key, url, "oss"
+
+    # 本地存储：UUID 重命名，避免重名与路径注入
+    stored_name = f"{datetime.now():%Y%m%d}_{uuid.uuid4().hex}{ext}"
+    os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
+    with open(os.path.join(settings.UPLOAD_DIR, stored_name), "wb") as f:
+        f.write(data)
+    return stored_name, f"{settings.BASE_URL}/static/{stored_name}", "local"
+
+
 @router.post("/upload", summary="上传资源文件（图片/视频/PDF）")
 async def upload_resource(
     file: UploadFile = File(..., description="上传的文件"),
@@ -54,21 +78,18 @@ async def upload_resource(
     if not data:
         raise HTTPException(400, "文件为空")
 
-    # 使用 UUID 重命名，避免重名与路径注入
+    # 按存储配置分流：OSS 或本地
     ext = os.path.splitext(file.filename or "")[1].lower()
-    stored_name = f"{datetime.now():%Y%m%d}_{uuid.uuid4().hex}{ext}"
-    os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
-    file_path = os.path.join(settings.UPLOAD_DIR, stored_name)
-    with open(file_path, "wb") as f:
-        f.write(data)
+    stored_name, url, storage = _save_bytes(db, data, file.content_type, ext)
 
     resource = Resource(
         user_id=user.id,
         filename=file.filename or stored_name,
         stored_name=stored_name,
-        url=f"{settings.BASE_URL}/static/{stored_name}",
+        url=url,
         file_type=file.content_type,
         file_size=len(data),
+        storage=storage,
     )
     db.add(resource)
     db.commit()
@@ -91,9 +112,9 @@ async def upload_resource_by_url(
     if not url.startswith(("http://", "https://")):
         raise HTTPException(400, "仅支持 http/https 的图片链接")
 
-    # 流式下载：限制总大小（与本地上传一致 20MB），防止下载超大文件占满磁盘
-    stored_name = ""
-    file_path = ""
+    # 流式下载到内存：限制总大小（与本地上传一致 20MB），随后按 OSS/本地配置统一入库
+    data_buf = BytesIO()
+    total = 0
     try:
         async with httpx.AsyncClient(follow_redirects=True, timeout=30) as client:
             async with client.stream("GET", url) as resp:
@@ -116,32 +137,22 @@ async def upload_resource_by_url(
                     raise HTTPException(400, "链接内容不是支持的图片格式（jpg/png/gif/webp/svg）")
 
                 ext = CONTENT_TYPE_EXT.get(content_type, ".jpg")
-                stored_name = f"{datetime.now():%Y%m%d}_{uuid.uuid4().hex}{ext}"
-                os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
-                file_path = os.path.join(settings.UPLOAD_DIR, stored_name)
-
-                total = 0
-                with open(file_path, "wb") as f:
-                    async for chunk in resp.aiter_bytes(64 * 1024):
-                        total += len(chunk)
-                        if total > settings.MAX_UPLOAD_SIZE:
-                            raise HTTPException(400, f"图片过大，最大允许 {settings.MAX_UPLOAD_SIZE // 1024 // 1024}MB")
-                        f.write(chunk)
+                async for chunk in resp.aiter_bytes(64 * 1024):
+                    total += len(chunk)
+                    if total > settings.MAX_UPLOAD_SIZE:
+                        raise HTTPException(400, f"图片过大，最大允许 {settings.MAX_UPLOAD_SIZE // 1024 // 1024}MB")
+                    data_buf.write(chunk)
                 if total == 0:
                     raise HTTPException(400, "下载内容为空")
     except HTTPException:
-        # 下载中断时清理半成品文件
-        if file_path and os.path.exists(file_path):
-            os.remove(file_path)
         raise
     except httpx.TimeoutException:
-        if file_path and os.path.exists(file_path):
-            os.remove(file_path)
         raise HTTPException(408, "下载超时，请确认链接可访问") from None
     except httpx.RequestError as e:
-        if file_path and os.path.exists(file_path):
-            os.remove(file_path)
         raise HTTPException(400, f"下载失败：{e}") from None
+
+    # 按存储配置分流：OSS 或本地
+    stored_name, url_stored, storage = _save_bytes(db, data_buf.getvalue(), content_type, ext)
 
     # 原始文件名优先取链接最后一段，取不到则用日期命名
     url_path = url.split("?")[0].rstrip("/")
@@ -150,9 +161,10 @@ async def upload_resource_by_url(
         user_id=user.id,
         filename=original_name,
         stored_name=stored_name,
-        url=f"{settings.BASE_URL}/static/{stored_name}",
+        url=url_stored,
         file_type=content_type,
         file_size=total,
+        storage=storage,
     )
     db.add(resource)
     db.commit()
@@ -186,11 +198,17 @@ def delete_resource(resource_id: int, db: Session = Depends(get_db), user: User 
     if user.role != "admin" and resource.user_id != user.id:
         raise HTTPException(403, "只能删除自己上传的资源")
 
-    # 删除物理文件（校验路径在上传目录内）
-    file_path = os.path.abspath(os.path.join(settings.UPLOAD_DIR, resource.stored_name))
-    upload_dir = os.path.abspath(settings.UPLOAD_DIR)
-    if os.path.commonpath([file_path, upload_dir]) == upload_dir and os.path.isfile(file_path):
-        os.remove(file_path)
+    # 按存储位置删除物理文件：OSS 删对象，本地删 uploads 内文件
+    if resource.storage == "oss":
+        oss_cfg = get_oss_config(db)
+        if oss_cfg:
+            delete_object(oss_cfg, resource.stored_name)
+        # OSS 配置已被清空时无法删除远端对象，跳过并保留资源记录删除
+    else:
+        file_path = os.path.abspath(os.path.join(settings.UPLOAD_DIR, resource.stored_name))
+        upload_dir = os.path.abspath(settings.UPLOAD_DIR)
+        if os.path.commonpath([file_path, upload_dir]) == upload_dir and os.path.isfile(file_path):
+            os.remove(file_path)
 
     db.delete(resource)
     db.commit()

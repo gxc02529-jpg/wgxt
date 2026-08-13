@@ -6,4 +6,5 @@ passlib
 python-jose
 python-multipart
 pydantic-settings
+boto3
 
