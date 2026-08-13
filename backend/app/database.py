@@ -172,6 +172,51 @@ def ensure_schema_compat() -> None:
             db.commit()
             print(f"已回填 {len(rows)} 篇文章的 content_source")
 
+        # 数据修复（幂等）：历史批量导入把 HTML 写进了摘要/纯文本，统一剥离为纯文本；
+        # 并把旧导入产生的嵌套 <p><p>…</p></p> 还原为单层段落
+        html_rows = (
+            db.query(Article.id, Article.summary)
+            .filter(Article.summary.like("%<%"), Article.summary.like("%>%"))
+            .all()
+        )
+        if html_rows:
+            for aid, summary in html_rows:
+                db.query(Article).filter(Article.id == aid).update(
+                    {"summary": strip_html(summary)[:200]},
+                    synchronize_session=False,
+                )
+            db.commit()
+            print(f"已修复 {len(html_rows)} 篇摘要中的 HTML 标签")
+
+        src_html_rows = (
+            db.query(Article.id, Article.content_source)
+            .filter(Article.content_source.like("%<p%"))
+            .all()
+        )
+        if src_html_rows:
+            for aid, source in src_html_rows:
+                db.query(Article).filter(Article.id == aid).update(
+                    {"content_source": strip_html(source)},
+                    synchronize_session=False,
+                )
+            db.commit()
+            print(f"已修复 {len(src_html_rows)} 篇 content_source 中的 HTML 标签")
+
+        nested_rows = (
+            db.query(Article.id, Article.content)
+            .filter(Article.content.like("%<p><p>%"))
+            .all()
+        )
+        if nested_rows:
+            for aid, content in nested_rows:
+                fixed = content.replace("<p><p>", "<p>").replace("</p></p>", "</p>")
+                db.query(Article).filter(Article.id == aid).update(
+                    {"content": fixed},
+                    synchronize_session=False,
+                )
+            db.commit()
+            print(f"已修复 {len(nested_rows)} 篇正文的嵌套 <p> 标签")
+
 
 def get_db():
     """FastAPI 依赖：每个请求一个数据库会话，请求结束自动关闭"""

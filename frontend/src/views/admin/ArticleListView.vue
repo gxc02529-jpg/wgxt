@@ -9,9 +9,17 @@
         <p class="admin-head__sub">管理全站文稿的编写、审核与发布状态</p>
       </div>
       <div class="admin-head__actions">
+        <el-button @click="importDialogVisible = true">
+          <el-icon><Upload /></el-icon>
+          批量导入
+        </el-button>
         <el-button type="primary" @click="router.push('/admin/articles/new')">
           <el-icon><EditPen /></el-icon>
           写新文稿
+        </el-button>
+        <el-button type="success" plain :disabled="!selectedRows.length" @click="batchSubmit">
+          <el-icon><Promotion /></el-icon>
+          批量提交审核{{ selectedRows.length ? `（${selectedRows.length}）` : '' }}
         </el-button>
         <el-button type="danger" plain :disabled="!selectedRows.length" @click="batchRemove">
           <el-icon><Delete /></el-icon>
@@ -19,6 +27,62 @@
         </el-button>
       </div>
     </div>
+
+    <!-- 批量导入弹窗 -->
+    <el-dialog v-model="importDialogVisible" title="批量导入文稿" width="640px" top="8vh">
+      <el-alert
+        type="info"
+        :closable="false"
+        show-icon
+        title="支持 .xlsx 格式，四列：封面 / 标题 / 分类 / 正文；最多 500 行；导入后为草稿"
+        class="import-tip"
+      />
+      <el-upload
+        drag
+        accept=".xlsx"
+        :auto-upload="false"
+        :limit="1"
+        :file-list="importFileList"
+        :on-change="onImportFileChange"
+        :on-remove="onImportFileRemove"
+        :on-exceed="onImportFileExceed"
+      >
+        <el-icon class="el-icon--upload"><UploadFilled /></el-icon>
+        <div class="el-upload__text">将 Excel 拖到此处，或 <em>点击选择文件</em></div>
+        <template #tip>
+          <div class="el-upload__tip">
+            封面列为图片链接；为空或无法下载时封面留空，文稿仍会导入
+          </div>
+        </template>
+      </el-upload>
+      <div class="import-actions">
+        <el-button type="primary" :loading="importing" :disabled="!importFile" @click="doImport">
+          开始导入
+        </el-button>
+      </div>
+
+      <div v-if="importResult" class="import-result">
+        <el-result icon="success" :title="importResult.message" />
+        <div
+          v-if="importResult.skipped?.length || importResult.failed?.length || importResult.warnings?.length"
+          class="import-detail"
+        >
+          <h4 class="import-detail__title">导入明细</h4>
+          <div class="import-detail__item" v-for="(w, i) in importResult.warnings" :key="'w' + i">
+            <span class="import-detail__row">第 {{ w.row }} 行</span>
+            <span class="import-detail__reason import-detail__reason--warn">{{ w.reason }}</span>
+          </div>
+          <div class="import-detail__item" v-for="(s, i) in importResult.skipped" :key="'s' + i">
+            <span class="import-detail__row">第 {{ s.row }} 行</span>
+            <span class="import-detail__reason import-detail__reason--skip">{{ s.reason }}</span>
+          </div>
+          <div class="import-detail__item" v-for="(f, i) in importResult.failed" :key="'f' + i">
+            <span class="import-detail__row">第 {{ f.row }} 行</span>
+            <span class="import-detail__reason import-detail__reason--fail">{{ f.reason }}</span>
+          </div>
+        </div>
+      </div>
+    </el-dialog>
 
     <div class="admin-card">
       <!-- 筛选栏 -->
@@ -123,7 +187,7 @@ import { onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
-  Delete, Document, EditPen, Promotion, Search, SwitchButton, View,
+  Delete, Document, EditPen, Promotion, Search, SwitchButton, Upload, UploadFilled, View,
 } from '@element-plus/icons-vue'
 import { articleApi } from '../../api'
 import { useAuthStore } from '../../stores/auth'
@@ -148,6 +212,48 @@ const pageSize = 10
 const loading = ref(false)
 const filters = reactive({ keyword: '', status: '' })
 const selectedRows = ref([])
+// 批量导入
+const importDialogVisible = ref(false)
+const importFileList = ref([])
+const importFile = ref(null)
+const importing = ref(false)
+const importResult = ref(null)
+
+function onImportFileChange(file) {
+  importFile.value = file.raw
+  importResult.value = null
+  importFileList.value = [file]
+}
+
+function onImportFileRemove() {
+  importFile.value = null
+  importResult.value = null
+  importFileList.value = []
+}
+
+function onImportFileExceed(files) {
+  // 只保留最新选择的文件
+  const file = files[0]
+  importFile.value = file
+  importResult.value = null
+  importFileList.value = [file]
+}
+
+async function doImport() {
+  if (!importFile.value) return
+  importing.value = true
+  const formData = new FormData()
+  formData.append('file', importFile.value)
+  try {
+    const res = await articleApi.importExcel(formData)
+    importResult.value = res
+    reload()
+  } catch (e) {
+    ElMessage.error(e?.response?.data?.detail || e?.message || '导入失败')
+  } finally {
+    importing.value = false
+  }
+}
 
 function statusBadgeClass(s) {
   return {
@@ -161,11 +267,14 @@ function statusBadgeClass(s) {
 }
 
 function isEditable(row) {
-  return (row.status === 'draft' || row.status === 'rejected') && (isAdmin || row.author_id === auth.user?.id)
+  // 草稿 / 驳回稿 / 已下线稿可编辑（下线稿编辑后重新提审再发布）
+  return (row.status === 'draft' || row.status === 'rejected' || row.status === 'offline')
+    && (isAdmin || row.author_id === auth.user?.id)
 }
 
 function canSubmit(row) {
-  return (row.status === 'draft' || row.status === 'rejected') && (isAdmin || row.author_id === auth.user?.id)
+  return (row.status === 'draft' || row.status === 'rejected' || row.status === 'offline')
+    && (isAdmin || row.author_id === auth.user?.id)
 }
 
 function canDelete(row) {
@@ -266,9 +375,110 @@ async function batchRemove() {
   load()
 }
 
+// 批量提交审核：仅提交可提交状态（草稿/已驳回/已下线）且作者本人或管理员，复用单篇提交接口
+async function batchSubmit() {
+  if (!selectedRows.value.length) return
+  const submittable = selectedRows.value.filter(canSubmit)
+  const skipped = selectedRows.value.length - submittable.length
+  if (!submittable.length) {
+    ElMessage.warning('选中的文稿均不可提交审核（仅草稿 / 已驳回 / 已下线可提交）')
+    return
+  }
+  try {
+    await ElMessageBox.confirm(
+      `将提交 ${submittable.length} 篇文稿进入一审审核` +
+        (skipped ? `，另有 ${skipped} 篇当前不可提交将被跳过` : '') +
+        '。确定提交吗？',
+      '批量提交审核',
+      { type: 'info', confirmButtonText: '提交审核', cancelButtonText: '取消' },
+    )
+  } catch {
+    return
+  }
+
+  let ok = 0
+  const fails = []
+  for (const row of submittable) {
+    try {
+      await articleApi.submit(row.id)
+      ok++
+    } catch (e) {
+      fails.push({ title: row.title, reason: e?.response?.data?.detail || e?.message || '提交失败' })
+    }
+  }
+  selectedRows.value = []
+  const skipTip = skipped ? `，跳过 ${skipped} 篇不可提交` : ''
+  if (fails.length) {
+    ElMessage.warning(`已提交 ${ok} 篇，失败 ${fails.length} 篇${skipTip}（如：${fails[0].reason}）`)
+  } else {
+    ElMessage.success(`已提交 ${ok} 篇文稿进入审核${skipTip}`)
+  }
+  load()
+}
+
 onMounted(load)
 </script>
 
 <style scoped>
+/* ---- 批量导入弹窗 ---- */
+.import-tip {
+  margin-bottom: 14px;
+}
+
+.import-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 14px;
+}
+
+.import-result {
+  margin-top: 8px;
+  border-top: 1px solid var(--color-border);
+  padding-top: 8px;
+}
+
+.import-result :deep(.el-result) {
+  padding: 16px 0;
+}
+
+.import-detail {
+  max-height: 220px;
+  overflow-y: auto;
+  background: var(--color-paper);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+}
+
+.import-detail__title {
+  margin: 0 0 8px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.import-detail__item {
+  display: flex;
+  gap: 8px;
+  padding: 3px 0;
+  font-size: 13px;
+}
+
+.import-detail__row {
+  flex-shrink: 0;
+  color: var(--color-text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.import-detail__reason--warn {
+  color: #b45309;
+}
+
+.import-detail__reason--skip {
+  color: #1d4ed8;
+}
+
+.import-detail__reason--fail {
+  color: #b91c1c;
+}
 </style>
 

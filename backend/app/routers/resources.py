@@ -7,6 +7,7 @@ from io import BytesIO
 
 import httpx
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
+from starlette.concurrency import run_in_threadpool
 from sqlalchemy.orm import Session
 
 from ..config import settings
@@ -16,7 +17,8 @@ from ..database import get_db
 from ..models.resource import Resource
 from ..models.user import User
 from ..schemas.resource import ResourceUrlIn
-from ..services.oss_service import delete_object, get_oss_config, upload_bytes
+from ..services.oss_service import delete_object, get_oss_config
+from ..services.storage_service import save_bytes
 
 router = APIRouter(prefix="/resources", tags=["资源"])
 
@@ -41,28 +43,6 @@ CONTENT_TYPE_EXT = {
 }
 
 
-def _save_bytes(db: Session, data: bytes, content_type: str, ext: str) -> tuple[str, str, str]:
-    """按 OSS 配置分流保存文件，返回 (stored_name, url, storage)。
-
-    - 已配置 OSS：上传到对象存储，URL 为公网地址；上传失败明确报错，不回退本地。
-    - 未配置：维持本地 uploads/ 存储。
-    """
-    oss_cfg = get_oss_config(db)
-    if oss_cfg:
-        try:
-            url, key = upload_bytes(oss_cfg, data, content_type, ext)
-        except Exception as e:
-            raise HTTPException(502, f"对象存储上传失败，请检查 OSS 配置：{e}") from None
-        return key, url, "oss"
-
-    # 本地存储：UUID 重命名，避免重名与路径注入
-    stored_name = f"{datetime.now():%Y%m%d}_{uuid.uuid4().hex}{ext}"
-    os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
-    with open(os.path.join(settings.UPLOAD_DIR, stored_name), "wb") as f:
-        f.write(data)
-    return stored_name, f"{settings.BASE_URL}/static/{stored_name}", "local"
-
-
 @router.post("/upload", summary="上传资源文件（图片/视频/PDF）")
 async def upload_resource(
     file: UploadFile = File(..., description="上传的文件"),
@@ -80,7 +60,11 @@ async def upload_resource(
 
     # 按存储配置分流：OSS 或本地
     ext = os.path.splitext(file.filename or "")[1].lower()
-    stored_name, url, storage = _save_bytes(db, data, file.content_type, ext)
+    # 读配置在主线程（Session 线程不安全），字节写入/上传放线程池避免阻塞事件循环
+    oss_cfg = get_oss_config(db)
+    stored_name, url, storage = await run_in_threadpool(
+        save_bytes, oss_cfg, data, file.content_type, ext,
+    )
 
     resource = Resource(
         user_id=user.id,
@@ -151,8 +135,11 @@ async def upload_resource_by_url(
     except httpx.RequestError as e:
         raise HTTPException(400, f"下载失败：{e}") from None
 
-    # 按存储配置分流：OSS 或本地
-    stored_name, url_stored, storage = _save_bytes(db, data_buf.getvalue(), content_type, ext)
+    # 按存储配置分流：OSS 或本地（读配置在主线程，上传/写文件在线程池）
+    oss_cfg = get_oss_config(db)
+    stored_name, url_stored, storage = await run_in_threadpool(
+        save_bytes, oss_cfg, data_buf.getvalue(), content_type, ext,
+    )
 
     # 原始文件名优先取链接最后一段，取不到则用日期命名
     url_path = url.split("?")[0].rstrip("/")

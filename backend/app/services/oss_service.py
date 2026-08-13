@@ -44,7 +44,12 @@ def _get_client(cfg: dict):
         region_name=cfg["region"],
         aws_access_key_id=cfg["access_key"],
         aws_secret_access_key=cfg["secret_key"],
-        config=Config(s3={"addressing_style": "path"}),
+        config=Config(
+            s3={"addressing_style": "path"},
+            connect_timeout=5,          # 连接失败快速返回，避免长时间阻塞
+            read_timeout=30,
+            retries={"max_attempts": 2},
+        ),
     )
 
 

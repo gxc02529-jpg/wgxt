@@ -12,6 +12,7 @@ from app.core.security import hash_password
 from app.models.user import User
 from app.models.category import Category
 from app.models.channel import Channel
+from app.models.article import article_categories
 from app.models.portal import PortalModule
 from app.models.system_setting import SystemSetting
 
@@ -32,18 +33,41 @@ def seed():
             db.add(User(username="user", password_hash=hash_password("user123"),
                         nickname="演示用户", role="user", status="active"))
 
-        # 2. 示例栏目（可按需增删改）
+        # 2. 默认栏目：10 个分类（原 6 个旧栏目不再创建，老库中残留且未被引用时自动清理）
         demo_categories = [
-            ("shizheng", "时政", "时政要闻与政策解读", 1),
-            ("jingji", "经济", "财经资讯与市场观察", 2),
-            ("keji", "科技", "前沿科技与创新动态", 3),
-            ("wenhua", "文化", "文化、艺术与人文阅读", 4),
-            ("tiyu", "体育", "体育赛事与运动健康", 5),
-            ("shehui", "社会", "社会新闻与民生话题", 6),
+            ("finance", "金融", "金融资讯与市场分析", 0),
+            ("realty", "房产", "房产政策与楼市动态", 1),
+            ("stocks", "股票", "股市行情与投资观察", 2),
+            ("education", "教育", "教育政策与校园资讯", 3),
+            ("science", "科学", "前沿科学与技术进展", 4),
+            ("society", "社会", "社会新闻与民生话题", 5),
+            ("politics", "政治", "时政要闻与政策解读", 6),
+            ("sports", "运动", "体育赛事与运动健康", 7),
+            ("game", "游戏", "游戏行业与电竞资讯", 8),
+            ("entertainment", "娱乐", "影视音乐与文娱动态", 9),
         ]
         for slug, name, desc, sort in demo_categories:
-            if not db.query(Category).filter(Category.slug == slug).first():
+            cat = db.query(Category).filter(Category.slug == slug).first()
+            if not cat:
                 db.add(Category(slug=slug, name=name, description=desc, sort_order=sort))
+            elif not cat.description:
+                # 已存在但缺描述的栏目（如历史数据）补上默认说明，不动名称/排序
+                cat.description = desc
+
+        # 清理旧默认栏目：原 6 个栏目若在旧库残留且未被文稿引用则删除；
+        # 仍被引用时保留并提示，避免破坏已发布文稿的分类关联
+        old_default_slugs = ["shizheng", "jingji", "keji", "wenhua", "tiyu", "shehui"]
+        for slug in old_default_slugs:
+            old_cat = db.query(Category).filter(Category.slug == slug).first()
+            if old_cat:
+                refs = db.query(article_categories).filter(
+                    article_categories.c.category_id == old_cat.id
+                ).count()
+                if refs == 0:
+                    db.delete(old_cat)
+                    print(f"已清理旧默认栏目：{slug}")
+                else:
+                    print(f"旧栏目 {slug} 仍被 {refs} 篇文稿引用，保留未删除")
 
         # 3. 默认分发渠道：门户（基础渠道，所有文稿默认包含且不可移除）
         if not db.query(Channel).filter(Channel.slug == "portal").first():

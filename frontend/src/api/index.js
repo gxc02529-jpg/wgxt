@@ -41,6 +41,12 @@ export const articleApi = {
   submit: (id) => client.post(`/articles/${id}/submit`),
   offline: (id) => client.post(`/articles/${id}/offline`),
   remove: (id) => client.delete(`/articles/${id}`),
+  // 批量导入：上传 Excel（封面/标题/分类/正文），返回导入统计
+  importExcel: (formData) =>
+    client.post('/articles/import', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+      timeout: 300000,
+    }),
 }
 
 // ---- 审核 ----

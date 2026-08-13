@@ -2,6 +2,9 @@
 """接口冒烟测试：验证核心业务流程，可随时重跑（python smoke_test.py）"""
 import sys
 import time
+import io as _io
+
+from openpyxl import Workbook
 
 import httpx
 
@@ -32,13 +35,24 @@ def main():
     admin2_h = {"Authorization": f"Bearer {admin2_token}"}
     print("[0] 二审管理员就绪 OK")
 
+    # 动态获取可用栏目 id（数据库可能被重置，避免硬编码失效的栏目 id）
+    r = client.get(f"{BASE}/categories")
+    assert r.status_code == 200 and r.json()["items"], "无可用栏目"
+    cat_ids = [c["id"] for c in r.json()["items"]][:2]
+    print(f"[0] 栏目就绪 OK ids={cat_ids}")
+
+    # 确保走人工两级审核流程：显式关闭自动审核（不依赖外部配置状态）
+    r = client.put(f"{BASE}/settings/auto_review", headers=admin_h, json={"value": False, "value_type": "bool"})
+    assert r.status_code == 200, f"关闭自动审核失败: {r.text}"
+    print("[0] 自动审核已关闭 OK")
+
     # 1. 编辑创建文稿
     r = client.post(f"{BASE}/articles", headers=ed_h, json={
         "title": "测试文稿：人工智能如何改变新闻业",
         "summary": "这是一篇用于系统联调的测试文稿。",
         "content": "<p>这是正文内容。</p>",
         "cover_url": "",
-        "category_ids": [3, 4],
+        "category_ids": cat_ids,
     })
     assert r.status_code == 200, f"创建失败: {r.text}"
     aid = r.json()["article"]["id"]
@@ -62,7 +76,7 @@ def main():
     print("[4] 二审通过 OK ->", r.json()["article"]["status"])
 
     # 5. 前台列表可见
-    r = client.get(f"{BASE}/articles", params={"category_id": 3})
+    r = client.get(f"{BASE}/articles", params={"category_id": cat_ids[0]})
     assert any(a["id"] == aid for a in r.json()["items"]), "文稿未出现在栏目列表中"
     print("[5] 前台列表可见 OK  total =", r.json()["total"])
 
@@ -219,24 +233,32 @@ def main():
     assert r.status_code == 200
     print("[13] 编辑注册策略已恢复开启")
 
-    # 14. OSS 配置：未配置走本地；配置后上传走 OSS 分支（无效 endpoint 明确报错）；secret_key 脱敏
-    r = client.get(f"{BASE}/portal/oss-config", headers=admin_h)
-    assert r.status_code == 200 and r.json()["configured"] is False
-    print("[14] OSS 配置读取（未配置）OK")
+    # 14. OSS 配置：备份 → 验证上传分支 → 恢复原配置（不破坏真实环境的 OSS/MinIO 配置）
+    saved = client.get(f"{BASE}/portal/oss-config", headers=admin_h)
+    assert saved.status_code == 200
+    saved_cfg = saved.json()["config"]
+    was_configured = bool(saved_cfg["endpoint"])
+    print(f"[14] OSS 配置读取 OK（当前{'已配置' if was_configured else '未配置'}）")
 
     files = {"file": ("test_oss.png", b"\x89PNG\r\n\x1a\n" + b"0" * 64, "image/png")}
-    r = client.post(f"{BASE}/resources/upload", headers=ed_h, files=files)
-    assert r.status_code == 200, f"本地上传失败: {r.text}"
-    assert r.json()["resource"]["storage"] == "local"
-    assert "/static/" in r.json()["resource"]["url"], f"本地资源 URL 异常: {r.json()['resource']['url']}"
-    print("[14] 未配置 OSS 上传走本地 OK")
+    if not was_configured:
+        # 未配置：上传走本地，回归原逻辑
+        r = client.post(f"{BASE}/resources/upload", headers=ed_h, files=files)
+        assert r.status_code == 200, f"本地上传失败: {r.text}"
+        assert r.json()["resource"]["storage"] == "local"
+        assert "/static/" in r.json()["resource"]["url"], f"本地资源 URL 异常: {r.json()['resource']['url']}"
+        print("[14] 未配置 OSS 上传走本地 OK")
+    else:
+        # 已配置：跳过本地回归，避免向真实 OSS 上传测试文件
+        print("[14] 当前已配置 OSS，跳过本地上传回归（避免污染真实存储）")
 
+    # 用无效 endpoint 覆盖配置，验证上传走 OSS 分支且明确报错；secret_key 传 **** 保留原值
     r = client.put(f"{BASE}/portal/oss-config", headers=admin_h, json={
         "endpoint": "http://127.0.0.1:9",
         "bucket": "test-bucket",
         "region": "us-east-1",
         "access_key": "test",
-        "secret_key": "test-secret",
+        "secret_key": "****",
         "path_prefix": "articles/",
         "public_base_url": "",
     })
@@ -244,19 +266,87 @@ def main():
     assert r.json()["config"]["secret_key"] == "****", "secret_key 应脱敏"
     print("[14] OSS 配置保存/脱敏 OK")
 
-    # 配置后上传：无效 endpoint 应报清晰错误（502），不回退本地
     r = client.post(f"{BASE}/resources/upload", headers=ed_h, files=files)
     assert r.status_code == 502 and "对象存储上传失败" in r.text, f"应报 OSS 上传失败: {r.text}"
     print("[14] OSS 上传失败明确报错 OK")
 
-    # 恢复：清空 OSS 配置切回本地
+    # 恢复原配置：secret_key 传 **** 保留原值，保证真实环境的密钥不受影响
     r = client.put(f"{BASE}/portal/oss-config", headers=admin_h, json={
-        "endpoint": "", "bucket": "", "region": "", "access_key": "",
-        "secret_key": "", "path_prefix": "", "public_base_url": "",
+        **saved_cfg,
+        "secret_key": "****",
     })
-    assert r.status_code == 200 and r.json()["configured"] is False
-    assert r.json()["config"]["secret_key"] == "", "清空后 secret_key 不应残留"
-    print("[14] OSS 配置已清空（恢复本地）OK")
+    assert r.status_code == 200 and r.json()["configured"] == was_configured
+    restored = client.get(f"{BASE}/portal/oss-config", headers=admin_h).json()["config"]
+    assert restored["endpoint"] == saved_cfg["endpoint"] and restored["bucket"] == saved_cfg["bucket"]
+    print("[14] OSS 配置已恢复原值 OK")
+
+    # 15. 下线文稿重新编辑并再次发布：offline → 编辑 → 提审 → 一审 → 二审 → published
+    r = client.post(f"{BASE}/articles/{aid}/offline", headers=admin_h)
+    assert r.status_code == 200 and r.json()["article"]["status"] == "offline", f"下线失败: {r.text}"
+    print("[15] 已发布文稿下线 OK")
+
+    # 作者编辑已下线文稿，状态保持 offline
+    r = client.put(f"{BASE}/articles/{aid}", headers=ed_h, json={
+        "title": "测试文稿：人工智能如何改变新闻业（修订版）",
+        "summary": "下线后重新编辑并再次发布",
+        "content": "<p>修订后的正文内容。</p>",
+        "cover_url": "",
+        "category_ids": cat_ids,
+    })
+    assert r.status_code == 200 and r.json()["article"]["status"] == "offline", f"下线稿编辑失败: {r.text}"
+    assert "修订版" in r.json()["article"]["title"]
+    print("[15] 下线稿编辑 OK（状态保持已下线）")
+
+    # 重新提审 → 两级审核 → 再发布
+    r = client.post(f"{BASE}/articles/{aid}/submit", headers=ed_h)
+    assert r.status_code == 200 and r.json()["article"]["status"] == "pending_first", f"重新提审失败: {r.text}"
+    print("[15] 下线稿重新提审 OK ->", r.json()["article"]["status"])
+
+    r = client.post(f"{BASE}/reviews", headers=admin_h, json={
+        "article_id": aid, "level": 1, "action": "approve", "comment": "修订版一审通过",
+    })
+    assert r.status_code == 200 and r.json()["article"]["status"] == "pending_second", f"修订版一审失败: {r.text}"
+    r = client.post(f"{BASE}/reviews", headers=admin2_h, json={
+        "article_id": aid, "level": 2, "action": "approve", "comment": "修订版二审通过",
+    })
+    assert r.status_code == 200 and r.json()["article"]["status"] == "published", f"修订版二审失败: {r.text}"
+    assert r.json()["article"]["published_at"], "再发布后应更新时间"
+    print("[15] 重新审核通过并再发布 OK ->", r.json()["article"]["status"])
+
+    # 16. 批量导入：构造 xlsx 覆盖成功/重复/栏目不匹配/封面缺失/标题为空分支
+    wb = Workbook()
+    ws = wb.active
+    ws.append(["封面", "标题", "分类", "正文"])
+    ws.append(["", f"导入测试文稿A_{uniq}", "游戏", "这是正文第一段。\n这是正文第二段。"])
+    ws.append(["", f"导入测试文稿A_{uniq}", "游戏", "重复标题"])
+    ws.append(["", f"导入测试文稿B_{uniq}", "游戏/不存在栏目", "正文B"])
+    ws.append(["", f"导入测试文稿C_{uniq}", "", "正文C"])
+    ws.append(["", "", "游戏", "标题为空"])
+    buf = _io.BytesIO()
+    wb.save(buf)
+    r = client.post(f"{BASE}/articles/import", headers=ed_h, files={
+        "file": ("import_test.xlsx", buf.getvalue(),
+                 "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"),
+    })
+    assert r.status_code == 200, f"批量导入失败: {r.text}"
+    res = r.json()
+    assert res["imported"] == 3, f"应导入 3 篇: {res}"
+    assert len(res["skipped"]) == 1 and res["skipped"][0]["reason"] == "标题已存在"
+    assert len(res["failed"]) == 1 and res["failed"][0]["reason"] == "标题为空"
+    assert any("栏目未匹配" in w["reason"] for w in res["warnings"])
+    print(f"[16] 批量导入 OK imported={res['imported']} skipped={len(res['skipped'])} failed={len(res['failed'])}")
+
+    # 导入的文稿为草稿且栏目正确（导入测试文稿B → 游戏栏目）
+    r = client.get(f"{BASE}/articles/mine", headers=ed_h, params={"page_size": 50})
+    imported_a = next((a for a in r.json()["items"] if a["title"] == f"导入测试文稿A_{uniq}"), None)
+    assert imported_a and imported_a["status"] == "draft", "导入文稿应为草稿"
+    assert imported_a["summary"].startswith("这是正文第一段"), "摘要应取正文首段"
+    print("[16] 导入文稿状态/摘要 OK")
+
+    # 非 xlsx 文件拒绝
+    r = client.post(f"{BASE}/articles/import", headers=ed_h, files={"file": ("bad.txt", b"hello", "text/plain")})
+    assert r.status_code == 400 and ".xlsx" in r.text, f"非 xlsx 应被拒绝: {r.text}"
+    print("[16] 非 xlsx 文件拒绝 OK")
 
     print("\nALL SMOKE TESTS PASSED")
 

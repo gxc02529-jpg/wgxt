@@ -3,11 +3,12 @@
 
 审核状态机：draft(草稿) → pending_first(待一审) → pending_second(待二审) → published(已发布)
                                                               ↘ rejected(已驳回，可修改后重新提交)
+              published → offline(已下线，可重新编辑后再次提审) → pending_first → ... → published
 开启系统配置 auto_review（自动审核）后，提审即自动通过两级审核并发布。
 """
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
@@ -21,13 +22,14 @@ from ..models.review import ArticleReview
 from ..models.user import User
 from ..models.view_history import ViewHistory
 from ..schemas.article import ArticleIn
+from ..services.article_import_service import import_excel
 from ..services.settings_service import get_setting
 from ..services.text_utils import strip_html
 
 router = APIRouter(prefix="/articles", tags=["文稿"])
 
-# 编辑可提交审核的状态；草稿与驳回稿可修改
-EDITABLE_STATUS = ("draft", "rejected")
+# 可编辑状态：草稿 / 驳回稿 / 已下线稿（下线稿编辑后状态保持 offline，重新提审再进入审核流）
+EDITABLE_STATUS = ("draft", "rejected", "offline")
 
 
 def _can_manage(article: Article, user: User) -> bool:
@@ -202,7 +204,24 @@ def create_article(body: ArticleIn, db: Session = Depends(get_db), user: User = 
     return {"message": "草稿已保存", "article": article.to_dict()}
 
 
-@router.put("/{article_id}", summary="编辑文稿（作者或管理员，仅草稿/驳回稿可编辑）")
+@router.post("/import", summary="批量导入文稿（Excel：封面/标题/分类/正文，编辑/管理员）")
+def import_articles(
+    file: UploadFile = File(..., description=".xlsx 文件"),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """上传 Excel 批量创建草稿；封面缺失/下载失败不丢弃文稿（封面留空），结果逐行统计"""
+    if user.role not in ("editor", "moderator", "admin"):
+        raise HTTPException(403, "仅编辑可导入文稿")
+    data = file.file.read()
+    result = import_excel(db, user, data, file.filename or "")
+    return {
+        "message": f"导入完成：成功 {result['imported']}，跳过 {len(result['skipped'])}，失败 {len(result['failed'])}",
+        **result,
+    }
+
+
+@router.put("/{article_id}", summary="编辑文稿（作者或管理员，草稿/驳回稿/已下线稿可编辑）")
 def update_article(article_id: int, body: ArticleIn, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     article = db.get(Article, article_id)
     if not article:
@@ -224,14 +243,14 @@ def update_article(article_id: int, body: ArticleIn, db: Session = Depends(get_d
     return {"message": "保存成功", "article": article.to_dict()}
 
 
-@router.post("/{article_id}/submit", summary="提交审核（草稿/驳回稿 → 待一审）")
+@router.post("/{article_id}/submit", summary="提交审核（草稿/驳回稿/已下线稿 → 待一审）")
 def submit_article(article_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     article = db.get(Article, article_id)
     if not article:
         raise HTTPException(404, "文稿不存在")
     if not _can_manage(article, user):
         raise HTTPException(403, "只能提交自己的文稿")
-    if article.status not in ("draft", "rejected"):
+    if article.status not in ("draft", "rejected", "offline"):
         raise HTTPException(400, f"当前状态（{article.status}）不能提交审核")
     if not article.categories:
         raise HTTPException(400, "请先选择至少一个栏目再提交审核")
