@@ -43,9 +43,12 @@ def dispatch(feature_type: int, inputs: dict) -> dict:
         #ai文稿分类功能
         if not title:
             raise ValueError("请先填写文稿标题")
-        #调用大模型进行一下标题分类的功能
+        # 调用 BERT 模型做标题分类；模型延迟加载（首次调用约 20 秒，之后复用），
+        # 避免后端启动时加载模型拖慢启动并干扰 uvicorn reload
+        from ..aimodel.predict import predict_fun
+        result=predict_fun(title)
 
-        return {"category_name": "时政"}
+        return {"category_name": result}
 
     if feature_type == FEATURE_SUMMARY:
         if not title or not content:
