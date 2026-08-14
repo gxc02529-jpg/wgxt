@@ -40,8 +40,11 @@ def dispatch(feature_type: int, inputs: dict) -> dict:
     content = (inputs.get("content") or "").strip()
 
     if feature_type == FEATURE_CLASSIFY:
+        #ai文稿分类功能
         if not title:
             raise ValueError("请先填写文稿标题")
+        #调用大模型进行一下标题分类的功能
+
         return {"category_name": "时政"}
 
     if feature_type == FEATURE_SUMMARY:
