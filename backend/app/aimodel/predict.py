@@ -1,11 +1,13 @@
 import torch.nn.functional as F
 # 包内相对导入：aimodel 作为 app 的子包被引用时，Config.py 与 predict.py 同目录
+# from Config import Config
 from .Config import Config
 import torch
 import torch.nn as nn # 提供一些模型训练基础函数
 from transformers import BertModel # 模型框架相关
 from transformers import BertTokenizer # bert模型读取相关
 from transformers.utils import PaddingStrategy # 句子向量化相关参数
+import json
 
 config = Config()
 # 有 GPU 用 GPU，没有则自动退回 CPU（避免启动直接报错）
@@ -21,6 +23,39 @@ classification_dict={0:'金融',
                      7:'运动',
                      8:'游戏',
                      9:'娱乐'}
+
+
+def load_knowledge_base() -> dict:
+    """加载 AI 知识库（关键词 → 分类强兜底）
+
+    优先级：
+    1. 后台系统设置 system_settings.ai_knowledge_base（在线修改，实时生效）
+    2. 本地文件 knowledge_base.json（兼容老环境/未初始化场景，兜底）
+    3. 都不可用时返回空字典（走模型预测）
+    """
+    try:
+        from ..database import SessionLocal
+        from ..models.system_setting import SystemSetting
+        db = SessionLocal()
+        try:
+            row = db.query(SystemSetting).filter(
+                SystemSetting.config_key == "ai_knowledge_base"
+            ).first()
+            if row and row.config_value:
+                value = json.loads(row.config_value)
+                if isinstance(value, dict) and value:
+                    return value
+        finally:
+            db.close()
+    except Exception:
+        pass
+    # 本地文件兜底
+    try:
+        with open(config.root_path / "knowledge_base.json", "r", encoding="utf-8") as f:
+            value = json.load(f)
+        return value if isinstance(value, dict) else {}
+    except Exception:
+        return {}
 
 
 # 1 定义pytorch模型框架和各类参数
@@ -65,9 +100,9 @@ def collate_fn(data): # 传进来的data [('我喜欢看电影', 2), ('王者荣
 # 2 预测过程封装成一个函数 输入文本返回分类结果
 def predict_fun(text):
     # 希望可以用之前的collate_fn来实现文本转model需要的格式
+    title=text
     text = [(text, 2)]  # 凑成collate_fn格式处理函数的输入
     input_ids, attention_mask, labels = collate_fn(text)
-
     with torch.no_grad():
         output = model(input_ids, attention_mask)  # 模型输入输出
         probs = F.softmax(output, dim=1)
@@ -81,6 +116,14 @@ def predict_fun(text):
         conf = confidence.item()  # 如 0.92
         pred = pred_idx.item()  # 类别编号
         print('pred',pred,'conf',conf,'name',classification_dict[pred])
+        # AI 知识库：后台系统设置在线配置优先，本地文件兜底（见 load_knowledge_base）
+        kb = load_knowledge_base()
+        # 2. 命中人物库，直接返回预置分类（强兜底）
+        print('kb',kb)
+        for name, info in kb.items():
+            print('name', name,'info',info,'title',title,'判定',name in title)
+            if name in title:
+                return info["category"]  # 直接返回 "时政"，绕过模型
         return classification_dict[pred]
 
         # 4. 得到类别名称
@@ -91,6 +134,6 @@ def predict_fun(text):
 
 
 if __name__ == '__main__':
-    text = '高市早苗称“绝对无法容忍”普京登岛，梅德韦杰夫回击'
+    text = '“两弹一星”元勋、中国科学院院士王希季逝世，享年105岁'
     result = predict_fun(text)
     print(result)

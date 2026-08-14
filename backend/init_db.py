@@ -3,10 +3,13 @@
 
 用法：在 backend 目录下执行 python init_db.py
 """
+import json
+
 from app.database import Base, engine, SessionLocal, ensure_database, ensure_schema_compat
 from app.models import (  # noqa: F401
     user, category, channel, article, review, resource, portal, event, interaction,
-    anonymous_action, system_setting, dify_workflow, view_history, ai_call, ai_task, comment, checkin,
+    anonymous_action, system_setting, dify_workflow, view_history, ai_call, ai_task,
+    ai_correction, comment, checkin,
 )
 from app.core.security import hash_password
 from app.models.user import User
@@ -132,6 +135,19 @@ def seed():
                 config_value="true",
                 value_type="bool",
                 description="允许用户注册为编辑写手；关闭后编辑账号仅可后台创建",
+            ))
+        # 8. AI 知识库（在线配置）：AI 分类强兜底的关键词 → 分类映射，后台系统设置可在线修改
+        if not db.query(SystemSetting).filter(SystemSetting.config_key == "ai_knowledge_base").first():
+            db.add(SystemSetting(
+                config_key="ai_knowledge_base",
+                config_value=json.dumps({
+                    "斯塔默": {"title": "英国首相", "category": "政治"},
+                    "米莱": {"title": "阿根廷总统", "category": "政治"},
+                    "元勋": {"title": "阿根廷总统", "category": "政治"},
+                    "泰勒·斯威夫特": {"title": "歌手", "category": "娱乐"},
+                }, ensure_ascii=False),
+                value_type="json",
+                description="AI 知识库（关键词→分类强兜底）：JSON 对象，键为关键词，值为 {title, category}",
             ))
 
         db.commit()

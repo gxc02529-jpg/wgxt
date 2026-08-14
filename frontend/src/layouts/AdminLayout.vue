@@ -93,9 +93,10 @@ const menuGroups = [
       { path: '/admin/users', label: '用户管理', roles: ['admin'] },
       { path: '/admin/behavior', label: '用户行为', roles: ['admin'] },
       { path: '/admin/comments', label: '评论管理', roles: ['admin'] },
-      { path: '/admin/points', label: '积分管理', roles: ['admin'] },
-      { path: '/admin/ai-calls', label: 'AI 调用记录', roles: ['admin'] },
-      { path: '/admin/stats', label: '数据统计', roles: ['admin'] },
+        { path: '/admin/points', label: '积分管理', roles: ['admin'] },
+        { path: '/admin/ai-calls', label: 'AI 调用记录', roles: ['admin'] },
+        { path: '/admin/ai-corrections', label: 'AI 分类纠正', roles: ['admin'] },
+        { path: '/admin/stats', label: '数据统计', roles: ['admin'] },
     ],
   },
   {

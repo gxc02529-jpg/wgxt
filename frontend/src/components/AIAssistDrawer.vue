@@ -131,6 +131,27 @@
             <el-icon class="ai-result-icon ai-result-icon--ok"><CircleCheck /></el-icon>
             <span>识别栏目：<strong>{{ classifyResult }}</strong>（已自动选中）</span>
           </div>
+          <!-- 分类纠正：AI 分类不准时手动纠正，沉淀训练数据集并立即选中正确栏目 -->
+          <div v-if="classifyResult" class="ai-correction">
+            <span class="ai-correction__label">分类不准？选择正确栏目：</span>
+            <el-select
+              v-model="correctionCategoryId"
+              placeholder="选择正确栏目"
+              size="small"
+              class="ai-correction__select"
+            >
+              <el-option v-for="c in categories" :key="c.id" :label="c.name" :value="c.id" />
+            </el-select>
+            <el-button
+              type="warning"
+              size="small"
+              :disabled="!correctionCategoryId"
+              :loading="correcting"
+              @click="submitCorrection"
+            >
+              纠正
+            </el-button>
+          </div>
         </article>
 
         <!-- 2. AI 生成摘要 -->
@@ -288,7 +309,7 @@ import { ElMessage } from 'element-plus'
 import {
   CircleCheck, CircleClose, Collection, Document, EditPen, MagicStick, Trophy, Warning,
 } from '@element-plus/icons-vue'
-import { aiAssistApi } from '../api'
+import { aiAssistApi, aiCorrectionApi } from '../api'
 import RichTextEditor from './RichTextEditor.vue'
 import { stripHtml } from '../utils/text'
 
@@ -317,6 +338,8 @@ const NEEDS = {
 const editTab = ref('edit')
 const loading = reactive({ classify: false, summary: false, review: false, check: false, score: false })
 const classifyResult = ref('')
+const correctionCategoryId = ref(null)
+const correcting = ref(false)
 const summaryResult = ref('')
 const reviewItems = ref([])
 const checkItems = ref([])
@@ -392,6 +415,30 @@ function scorePercent(point) {
   return Math.round((Number(match[1]) / Number(match[2])) * 100)
 }
 
+// 提交分类纠正：保存训练样本（标题+正文+模型分类+纠正分类），并把纠正栏目选中到当前文稿
+async function submitCorrection() {
+  const hit = props.categories.find((c) => c.id === correctionCategoryId.value)
+  if (!hit) return
+  correcting.value = true
+  try {
+    await aiCorrectionApi.submit({
+      title: props.form.title || '',
+      content: contentText.value,
+      model_category: classifyResult.value,
+      corrected_category: hit.name,
+      article_id: props.form.id || null,
+    })
+    // 纠正结果应用到当前文稿：自动选中纠正栏目
+    if (!props.form.category_ids.includes(hit.id)) props.form.category_ids.push(hit.id)
+    ElMessage.success(`已纠正为「${hit.name}」并自动选中，样本已加入训练数据集`)
+    correctionCategoryId.value = null
+  } catch (e) {
+    ElMessage.error(String(e))
+  } finally {
+    correcting.value = false
+  }
+}
+
 async function run(key) {
   loading[key] = true
   pollAbort = false
@@ -463,6 +510,7 @@ watch(
       pollAbort = false
       editTab.value = 'edit'
       classifyResult.value = ''
+      correctionCategoryId.value = null
       summaryResult.value = ''
       reviewItems.value = []
       checkItems.value = []
@@ -767,6 +815,27 @@ watch(
 
 .ai-result-icon--ok {
   color: var(--color-success, #16a34a);
+}
+
+/* 分类纠正区 */
+.ai-correction {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--color-rule, #e2e8f0);
+  flex-wrap: wrap;
+}
+
+.ai-correction__label {
+  font-size: 12px;
+  color: var(--color-ink-2, #64748b);
+}
+
+.ai-correction__select {
+  width: 140px;
+  flex-shrink: 0;
 }
 
 /* 审核结果 chips */

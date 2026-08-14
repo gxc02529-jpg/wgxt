@@ -195,3 +195,10 @@ export const aiAssistApi = {
 export const aiLogApi = {
   list: (params) => client.get('/admin/ai-calls', { params }),
 }
+
+// ---- AI 分类纠正数据集（写手提交纠正 / 管理员查看导出）----
+export const aiCorrectionApi = {
+  submit: (data) => client.post('/ai/assist/corrections', data),
+  list: (params) => client.get('/admin/ai-corrections', { params }),
+  exportJson: (params) => client.get('/admin/ai-corrections/export', { params, responseType: 'blob' }),
+}

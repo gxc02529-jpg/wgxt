@@ -72,6 +72,7 @@ api_router.include_router(settings_router.router)
 api_router.include_router(dify.router)
 api_router.include_router(ai_assist.router)
 api_router.include_router(ai_assist.admin_router)
+api_router.include_router(ai_assist.admin_corrections_router)
 app.include_router(api_router)
 
 

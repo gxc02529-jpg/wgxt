@@ -30,3 +30,12 @@ class AITaskStatusOut(BaseModel):
     created_at: datetime | None = Field(default=None, description="任务提交时间")
     started_at: datetime | None = Field(default=None, description="任务开始执行时间")
     finished_at: datetime | None = Field(default=None, description="任务完成时间")
+
+
+class AICorrectionIn(BaseModel):
+    """AI 分类纠正入参：一条训练样本（标题 + 正文 + 纠错前后分类）"""
+    title: str = Field(min_length=1, max_length=200, description="文稿标题")
+    content: str = Field(default="", max_length=20000, description="文稿正文纯文本（可空）")
+    model_category: str = Field(default="", max_length=50, description="AI 模型原始分类（中文名）")
+    corrected_category: str = Field(min_length=1, max_length=50, description="用户纠正后的分类（中文名）")
+    article_id: int | None = Field(default=None, description="关联文稿ID（可选）")

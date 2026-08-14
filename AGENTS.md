@@ -67,6 +67,17 @@ npm run dev
 - 凡修改前端样式（布局、颜色、间距、字体、主题换肤、响应式等），必须使用 **Chrome DevTools 进行 DOM 审核**验证，检查项包括：DOM 结构与类名挂载（如门户换肤的 `.theme-*` 是否挂到 PortalLayout 外壳）、元素的 computed style（计算样式）与 CSS 变量实际取值、响应式断点下的布局、控制台是否有样式相关报错。
 - 可用 skill：`chrome-devtools` / `chrome-devtools-cli`（DOM 与样式检查）、`debug-optimize-lcp`（首屏性能）、`a11y-debugging`（可访问性）；涉及换肤时同时遵守第 10 条的三处同步。
 
+## Windows PowerShell 中文编码注意（防止数据乱码）
+
+- **根因**：Windows PowerShell 5.1 向外部程序（如 `python -`）管道传输文本时按系统 ANSI/ASCII 编码，
+  中文会被破坏成 `?`，导致写入数据库/文件的真实数据乱码（曾发生在 system_settings 的知识库配置上）。
+- **禁止**：不要用 `@'...'@ | python -` 这类管道方式执行含中文的 Python 脚本；不要把中文字面量经
+  PowerShell 管道喂给任何外部程序（curl 的 `-d` 参数同理）。
+- **正确做法**：需要执行含中文的脚本/请求时，先用 apply_patch 把脚本写成 UTF-8 文件，
+  再执行 `python -X utf8 脚本文件.py`；后端代码内中文文件读写统一显式 `encoding="utf-8"`。
+- **排查**：终端/日志显示乱码不一定是数据乱码（可能是控制台显示编码问题）。
+  判断数据是否真乱码：用 `ascii()` / `repr()` 输出转义码点检查，或直接用 UTF-8 文件脚本读取数据库原值。
+
 ## 开发流程规范（Skills 驱动，所有新功能/改动必须遵守）
 
 本项目的功能开发统一按以下流程执行，任何 AI 助手或开发者都应遵循：

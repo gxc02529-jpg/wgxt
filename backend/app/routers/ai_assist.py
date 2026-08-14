@@ -11,16 +11,19 @@
 - 规格文档：docs/ai_assist_async.md
 """
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import Response
+import json
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from ..core.deps import get_current_user, require_roles
 from ..core.pagination import paginate
 from ..database import get_db
+from ..models.ai_correction import AICorrection
 from ..models.ai_call import AICallLog
 from ..models.ai_task import AITask
 from ..models.user import User
-from ..schemas.ai import AIAssistIn, AITaskOut, AITaskStatusOut
+from ..schemas.ai import AIAssistIn, AICorrectionIn, AITaskOut, AITaskStatusOut
 from ..services.ai_assist_worker import submit_task
 
 # 功能类型常量：与 ai_call_logs.feature_type 注释保持一致
@@ -49,6 +52,7 @@ FEATURE_NEEDS = {
 
 router = APIRouter(prefix="/ai/assist", tags=["AI 协作台"])
 admin_router = APIRouter(prefix="/admin/ai-calls", tags=["后台-AI 调用记录"])
+admin_corrections_router = APIRouter(prefix="/admin/ai-corrections", tags=["后台-AI 分类纠正数据集"])
 
 
 def _check_ai_inputs(feature_type: int, body: AIAssistIn) -> None:
@@ -163,6 +167,33 @@ def ai_task_status(
     }
 
 
+@router.post("/corrections", summary="提交 AI 分类纠正（沉淀训练数据集，纠正后前端自动选中栏目）")
+def ai_correction_create(
+    body: AICorrectionIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """保存一条「标题 + 正文 + 模型分类 + 纠正分类」训练样本，供二次训练使用"""
+    title = body.title.strip()
+    corrected = body.corrected_category.strip()
+    if not title:
+        raise HTTPException(400, "文稿标题不能为空")
+    if not corrected:
+        raise HTTPException(400, "纠正分类不能为空")
+    row = AICorrection(
+        user_id=user.id,
+        article_id=body.article_id,
+        title=title,
+        content=body.content or "",
+        model_category=body.model_category.strip(),
+        corrected_category=corrected,
+    )
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return {"message": "纠正已记录，感谢贡献训练样本", "id": row.id}
+
+
 @admin_router.get("", summary="AI 调用记录列表（管理员，可按用户/功能类型筛选）")
 def admin_ai_calls(
     keyword: str | None = Query(default=None, description="按用户名/昵称模糊搜索"),
@@ -196,3 +227,73 @@ def admin_ai_calls(
             "created_at": log.created_at.strftime("%Y-%m-%d %H:%M:%S") if log.created_at else None,
         })
     return {"items": items, "total": total, "page": page, "page_size": page_size}
+
+
+@admin_corrections_router.get("", summary="AI 分类纠正数据集列表（管理员）")
+def admin_ai_corrections(
+    keyword: str | None = Query(default=None, description="按标题/纠正分类模糊搜索"),
+    corrected_category: str | None = Query(default=None, description="按纠正分类精确筛选"),
+    page: int = 1,
+    page_size: int = 10,
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_roles("admin")),
+):
+    """后台查看纠正数据集，支持标题搜索与纠正分类筛选"""
+    query = db.query(AICorrection, User).join(User, User.id == AICorrection.user_id)
+    if keyword:
+        like = f"%{keyword}%"
+        query = query.filter(
+            or_(AICorrection.title.like(like), AICorrection.corrected_category.like(like))
+        )
+    if corrected_category:
+        query = query.filter(AICorrection.corrected_category == corrected_category)
+    query = query.order_by(AICorrection.created_at.desc(), AICorrection.id.desc())
+    rows, total = paginate(query, page, page_size)
+    items = []
+    for corr, user in rows:
+        items.append({
+            "id": corr.id,
+            "article_id": corr.article_id,
+            "title": corr.title,
+            "content": corr.content,
+            "model_category": corr.model_category,
+            "corrected_category": corr.corrected_category,
+            "username": user.username,
+            "nickname": user.nickname,
+            "created_at": corr.created_at.strftime("%Y-%m-%d %H:%M:%S") if corr.created_at else None,
+        })
+    return {"items": items, "total": total, "page": page, "page_size": page_size}
+
+
+@admin_corrections_router.get("/export", summary="导出 AI 分类纠正数据集 JSON（管理员，供二次训练）")
+def admin_ai_corrections_export(
+    start_date: str | None = Query(default=None, description="开始日期（YYYY-MM-DD，可选）"),
+    end_date: str | None = Query(default=None, description="结束日期（YYYY-MM-DD，可选）"),
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_roles("admin")),
+):
+    """导出训练样本（标题/正文/模型分类/纠正分类），可按提交日期区间过滤；
+    不传 start_date/end_date 时导出全量，可直接用于模型二次训练"""
+    query = db.query(AICorrection)
+    if start_date:
+        query = query.filter(AICorrection.created_at >= f"{start_date} 00:00:00")
+    if end_date:
+        query = query.filter(AICorrection.created_at <= f"{end_date} 23:59:59")
+    rows = query.order_by(AICorrection.id).all()
+    data = [
+        {
+            "id": r.id,
+            "title": r.title,
+            "content": r.content,
+            "model_category": r.model_category,
+            "corrected_category": r.corrected_category,
+            "created_at": r.created_at.strftime("%Y-%m-%d %H:%M:%S") if r.created_at else None,
+        }
+        for r in rows
+    ]
+    payload = json.dumps(data, ensure_ascii=False, indent=2).encode("utf-8")
+    return Response(
+        content=payload,
+        media_type="application/json",
+        headers={"Content-Disposition": "attachment; filename=ai_corrections.json"},
+    )

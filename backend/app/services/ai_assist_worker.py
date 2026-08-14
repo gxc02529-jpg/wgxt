@@ -48,6 +48,10 @@ def dispatch(feature_type: int, inputs: dict) -> dict:
         from ..aimodel.predict import predict_fun
         result=predict_fun(title)
 
+        #加个知识库配置
+
+        #
+
         return {"category_name": result}
 
     if feature_type == FEATURE_SUMMARY:

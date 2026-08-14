@@ -421,9 +421,18 @@ def main():
     assert r.status_code == 400, f"缺少标题应 400: {r.text}"
     print("[18] AI 任务入参校验 OK")
 
-    # 逐个提交 5 类任务并轮询到成功，校验结果结构与占位实现一致
+    # 在线知识库：写入冒烟关键词（→科学），分类断言走知识库强兜底，不依赖模型效果
+    ai_classify_title = "smoke_kb_person 出席国际会议"
+    r = client.put(f"{BASE}/settings/ai_knowledge_base", headers=admin_h, json={
+        "value": {"smoke_kb_person": {"title": "冒烟测试人物", "category": "科学"}},
+        "value_type": "json",
+    })
+    assert r.status_code == 200, f"写入在线知识库失败: {r.text}"
+    print("[18] 在线知识库写入 OK")
+
+    # 逐个提交 5 类任务并轮询到成功，校验结果结构（classify 命中知识库返回科学）
     cases = [
-        ("classify", {"title": ai_title}, lambda d: d["category_name"] == "时政"),
+        ("classify", {"title": ai_classify_title}, lambda d: d["category_name"] == "科学"),
         ("summary", {"title": ai_title, "content": ai_content}, lambda d: d["summary"] == "这是摘要"),
         ("review", {"title": ai_title, "content": ai_content}, lambda d: set(d) >= {"色情内容", "用语文明"}),
         ("check", {"content": ai_content}, lambda d: len(d.get("items", [])) >= 2),
@@ -439,6 +448,11 @@ def main():
         assert done["feature_name"], f"{name} 应返回功能中文名"
         assert check(done["result"]), f"{name} 结果不符合占位实现: {done['result']}"
         print(f"[18] AI {name} 异步任务 OK  task_id={task_id} status={done['status']}")
+
+    # 恢复在线知识库为「删除配置」，回退到本地 knowledge_base.json（斯塔默→政治等），不污染演示数据
+    r = client.delete(f"{BASE}/settings/ai_knowledge_base", headers=admin_h)
+    assert r.status_code == 200, f"恢复在线知识库失败: {r.text}"
+    print("[18] 在线知识库已恢复（回退本地文件）")
 
     # 权限：普通用户查询他人任务 403；查询不存在的任务 404；本人可查
     first_task_id = None
@@ -457,10 +471,61 @@ def main():
     assert r.status_code == 200, f"查询 AI 调用记录失败: {r.text}"
     logs = r.json()["items"]
     assert any(
-        (log.get("input_params") or {}).get("title") == ai_title
+        (log.get("input_params") or {}).get("title") == ai_classify_title
         for log in logs
     ), "后台 AI 调用记录应包含异步任务产生的记录"
     print(f"[18] AI 调用记录落库 OK  total={r.json()['total']}")
+
+    # 19. AI 分类纠正数据集：登录用户提交纠正 → 后台列表/导出；权限边界
+    corr_title = f"AI分类纠正样本_{uniq}"
+    r = client.post(f"{BASE}/ai/assist/corrections", json={
+        "title": corr_title, "content": "这是纠正样本正文。",
+        "model_category": "游戏", "corrected_category": "科学",
+    })
+    assert r.status_code == 401, f"未登录提交纠正应 401: {r.text}"
+    print("[19] 纠正未登录拒绝 OK")
+
+    r = client.post(f"{BASE}/ai/assist/corrections", headers=ed_h, json={
+        "title": "", "content": "", "model_category": "游戏", "corrected_category": "科学",
+    })
+    assert r.status_code in (400, 422), f"缺标题应 400/422: {r.text}"
+    r = client.post(f"{BASE}/ai/assist/corrections", headers=ed_h, json={
+        "title": corr_title, "content": "这是纠正样本正文。",
+        "model_category": "游戏", "corrected_category": "",
+    })
+    assert r.status_code in (400, 422), f"缺纠正分类应 400/422: {r.text}"
+    print("[19] 纠正入参校验 OK")
+
+    r = client.post(f"{BASE}/ai/assist/corrections", headers=ed_h, json={
+        "title": corr_title, "content": "这是纠正样本正文。",
+        "model_category": "游戏", "corrected_category": "科学",
+        "article_id": aid,
+    })
+    assert r.status_code == 200 and r.json()["id"], f"提交纠正失败: {r.text}"
+    print(f"[19] 提交纠正 OK  id={r.json()['id']}")
+
+    # 后台列表：非管理员 403；管理员可检索到刚提交的样本
+    r = client.get(f"{BASE}/admin/ai-corrections", headers=user_h)
+    assert r.status_code == 403, f"非管理员访问数据集应 403: {r.text}"
+    r = client.get(f"{BASE}/admin/ai-corrections", headers=admin_h, params={"keyword": corr_title})
+    assert r.status_code == 200 and r.json()["total"] >= 1, f"数据集列表异常: {r.text}"
+    row = r.json()["items"][0]
+    assert row["title"] == corr_title and row["corrected_category"] == "科学"
+    assert row["model_category"] == "游戏" and row["article_id"] == aid
+    print("[19] 后台数据集列表/检索 OK")
+
+    # 导出 JSON（全量训练样本）
+    r = client.get(f"{BASE}/admin/ai-corrections/export", headers=admin_h)
+    assert r.status_code == 200 and "application/json" in r.headers.get("content-type", "")
+    exported = r.json()
+    assert any(x["title"] == corr_title and x["corrected_category"] == "科学" for x in exported)
+    print(f"[19] 数据集导出 OK  共 {len(exported)} 条")
+
+    # 导出按日期区间过滤：未来区间应为空，不传参数为全量
+    r = client.get(f"{BASE}/admin/ai-corrections/export", headers=admin_h,
+                   params={"start_date": "2027-01-01", "end_date": "2027-01-02"})
+    assert r.status_code == 200 and r.json() == [], f"未来日期区间导出应为空: {r.text[:200]}"
+    print("[19] 导出日期区间过滤 OK（未来区间为空）")
 
     print("\nALL SMOKE TESTS PASSED")
 
