@@ -31,6 +31,20 @@ router = APIRouter(prefix="/articles", tags=["文稿"])
 # 可编辑状态：草稿 / 驳回稿 / 已下线稿（下线稿编辑后状态保持 offline，重新提审再进入审核流）
 EDITABLE_STATUS = ("draft", "rejected", "offline")
 
+# 后台列表可排序字段白名单（sort_by 参数 → ORM 列），防止注入任意排序列
+ADMIN_SORT_FIELDS = {
+    "updated_at": Article.updated_at,
+    "created_at": Article.created_at,
+    "published_at": Article.published_at,
+    "view_count": Article.view_count,
+    "like_count": Article.like_count,
+    "favorite_count": Article.favorite_count,
+    "share_count": Article.share_count,
+}
+
+# sort_by 查询参数校验模式（与 ADMIN_SORT_FIELDS 保持同步）
+SORT_BY_PATTERN = "^(updated_at|created_at|published_at|view_count|like_count|favorite_count|share_count)$"
+
 
 def _can_manage(article: Article, user: User) -> bool:
     """判断用户是否为作者或管理员"""
@@ -84,6 +98,10 @@ def list_articles(
 @router.get("/mine", summary="我的文稿（编辑/管理员）")
 def my_articles(
     status: str | None = Query(default=None, description="按状态筛选"),
+    keyword: str | None = Query(default=None, description="标题/摘要关键词"),
+    category_id: int | None = Query(default=None, description="按栏目筛选"),
+    sort_by: str = Query(default="updated_at", pattern=SORT_BY_PATTERN, description="排序字段"),
+    sort_order: str = Query(default="desc", pattern="^(asc|desc)$", description="排序方向"),
     page: int = 1,
     page_size: int = 10,
     db: Session = Depends(get_db),
@@ -95,7 +113,13 @@ def my_articles(
     query = db.query(Article).filter(Article.author_id == user.id)
     if status:
         query = query.filter(Article.status == status)
-    query = query.order_by(Article.updated_at.desc())
+    if keyword:
+        query = query.filter(or_(Article.title.like(f"%{keyword}%"), Article.summary.like(f"%{keyword}%")))
+    if category_id:
+        query = query.join(article_categories, Article.id == article_categories.c.article_id) \
+                     .filter(article_categories.c.category_id == category_id)
+    sort_column = ADMIN_SORT_FIELDS.get(sort_by, Article.updated_at)
+    query = query.order_by(sort_column.desc() if sort_order == "desc" else sort_column.asc())
     rows, total = paginate(query, page, page_size)
     return {"items": [a.to_dict() for a in rows], "total": total, "page": page, "page_size": page_size}
 
@@ -105,6 +129,8 @@ def admin_articles(
     status: str | None = Query(default=None),
     keyword: str | None = Query(default=None),
     category_id: int | None = Query(default=None),
+    sort_by: str = Query(default="updated_at", pattern=SORT_BY_PATTERN, description="排序字段"),
+    sort_order: str = Query(default="desc", pattern="^(asc|desc)$", description="排序方向"),
     page: int = 1,
     page_size: int = 10,
     db: Session = Depends(get_db),
@@ -118,7 +144,9 @@ def admin_articles(
     if category_id:
         query = query.join(article_categories, Article.id == article_categories.c.article_id) \
                      .filter(article_categories.c.category_id == category_id)
-    query = query.order_by(Article.updated_at.desc())
+    # 服务端排序：白名单字段 + 方向，默认 updated_at 降序（保持旧行为）
+    sort_column = ADMIN_SORT_FIELDS.get(sort_by, Article.updated_at)
+    query = query.order_by(sort_column.desc() if sort_order == "desc" else sort_column.asc())
     rows, total = paginate(query, page, page_size)
     return {"items": [a.to_dict() for a in rows], "total": total, "page": page, "page_size": page_size}
 

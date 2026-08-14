@@ -97,13 +97,23 @@
         <el-select v-model="filters.status" placeholder="全部状态" clearable style="width: 150px" @change="reload">
           <el-option v-for="(label, value) in statusMap" :key="value" :label="label" :value="value" />
         </el-select>
+        <el-select v-model="filters.category_id" placeholder="全部栏目" clearable style="width: 150px" @change="reload">
+          <el-option v-for="c in categories" :key="c.id" :label="c.name" :value="c.id" />
+        </el-select>
         <el-button @click="reload">
           <el-icon><Search /></el-icon>
           查询
         </el-button>
       </div>
 
-      <el-table :data="articles" v-loading="loading" style="width: 100%" @selection-change="handleSelectionChange">
+      <el-table
+        :data="articles"
+        v-loading="loading"
+        style="width: 100%"
+        :default-sort="{ prop: 'updated_at', order: 'descending' }"
+        @selection-change="handleSelectionChange"
+        @sort-change="handleSortChange"
+      >
         <el-table-column type="selection" width="48" :selectable="isSelectable" />
         <el-table-column label="文稿" min-width="280">
           <template #default="{ row }">
@@ -121,7 +131,7 @@
               </span>
               <div class="cell-title">
                 <span class="cell-title__main" :title="row.title">{{ row.title }}</span>
-                <span class="cell-title__sub">#{{ row.id }} · {{ row.author_name }} · {{ row.updated_at }}</span>
+                <span class="cell-title__sub">#{{ row.id }} · {{ row.author_name }}</span>
               </div>
             </div>
           </template>
@@ -141,16 +151,12 @@
             </span>
           </template>
         </el-table-column>
-        <el-table-column label="数据" width="210">
-          <template #default="{ row }">
-            <div class="stat-line">
-              <span class="stat-line__item"><el-icon><View /></el-icon>{{ row.view_count }} 浏览</span>
-              <span class="stat-line__item">点赞 {{ row.like_count }}</span>
-              <span class="stat-line__item">收藏 {{ row.favorite_count }}</span>
-              <span class="stat-line__item">转发 {{ row.share_count }}</span>
-            </div>
-          </template>
-        </el-table-column>
+        <!-- 数值/时间列支持列头点击排序（服务端排序，见 handleSortChange） -->
+        <el-table-column label="浏览" prop="view_count" width="100" sortable="custom" />
+        <el-table-column label="点赞" prop="like_count" width="90" sortable="custom" />
+        <el-table-column label="收藏" prop="favorite_count" width="90" sortable="custom" />
+        <el-table-column label="转发" prop="share_count" width="90" sortable="custom" />
+        <el-table-column label="更新时间" prop="updated_at" width="165" sortable="custom" />
         <el-table-column label="操作" width="250" fixed="right">
           <template #default="{ row }">
             <div class="row-actions">
@@ -197,9 +203,9 @@ import { onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
-  Delete, Document, EditPen, Promotion, Search, SwitchButton, Upload, UploadFilled, View,
+  Delete, Document, EditPen, Promotion, Search, SwitchButton, Upload, UploadFilled,
 } from '@element-plus/icons-vue'
-import { articleApi } from '../../api'
+import { articleApi, categoryApi } from '../../api'
 import { useAuthStore } from '../../stores/auth'
 import ArticlePreviewDrawer from '../../components/ArticlePreviewDrawer.vue'
 
@@ -221,7 +227,11 @@ const total = ref(0)
 const page = ref(1)
 const pageSize = 10
 const loading = ref(false)
-const filters = reactive({ keyword: '', status: '' })
+const filters = reactive({ keyword: '', status: '', category_id: '' })
+// 栏目下拉数据（进入页面时加载）
+const categories = ref([])
+// 服务端排序：与后端 sort_by/sort_order 对应，默认更新时间降序
+const sort = reactive({ by: 'updated_at', order: 'desc' })
 const selectedRows = ref([])
 // 批量导入
 const importDialogVisible = ref(false)
@@ -312,7 +322,8 @@ function handleSelectionChange(rows) {
 async function load() {
   loading.value = true
   try {
-    const params = { page: page.value, page_size: pageSize, ...filters }
+    const params = { page: page.value, page_size: pageSize, ...filters, sort_by: sort.by, sort_order: sort.order }
+    if (!params.category_id) delete params.category_id
     const res = isAdmin ? await articleApi.adminList(params) : await articleApi.mine(params)
     articles.value = res.items
     total.value = res.total
@@ -326,6 +337,28 @@ async function load() {
 function reload() {
   page.value = 1
   load()
+}
+
+// 列头点击排序（服务端排序）：升序/降序/清空（第三击恢复默认更新时间降序）
+function handleSortChange({ prop, order }) {
+  if (!order) {
+    sort.by = 'updated_at'
+    sort.order = 'desc'
+  } else {
+    sort.by = prop
+    sort.order = order === 'ascending' ? 'asc' : 'desc'
+  }
+  page.value = 1
+  load()
+}
+
+async function loadCategories() {
+  try {
+    const res = await categoryApi.list()
+    categories.value = res.items
+  } catch (e) {
+    ElMessage.error(String(e))
+  }
 }
 
 function changePage(p) {
@@ -435,7 +468,10 @@ async function batchSubmit() {
   load()
 }
 
-onMounted(load)
+onMounted(async () => {
+  await loadCategories()
+  load()
+})
 </script>
 
 <style scoped>
