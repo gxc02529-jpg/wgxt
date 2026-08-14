@@ -93,6 +93,20 @@ def main():
     assert any(a["id"] == aid for a in r.json()["items"]), "文稿未出现在栏目列表中"
     print("[5] 前台列表可见 OK  total =", r.json()["total"])
 
+    # 5.1 后台文稿列表：栏目筛选 + 服务端排序（sort_by/sort_order 白名单）
+    r = client.get(f"{BASE}/articles/admin", headers=admin_h,
+                   params={"category_id": cat_ids[0], "sort_by": "view_count", "sort_order": "desc"})
+    assert r.status_code == 200, f"后台列表筛选失败: {r.text}"
+    items = r.json()["items"]
+    assert items, "栏目筛选结果为空"
+    assert all(cat_ids[0] in [c["id"] for c in a["categories"]] for a in items), "栏目筛选结果不正确"
+    views = [a["view_count"] for a in items]
+    assert views == sorted(views, reverse=True), "按浏览量降序排序不正确"
+    # 非法排序字段应被参数校验拦截（422）
+    r = client.get(f"{BASE}/articles/admin", headers=admin_h, params={"sort_by": "title"})
+    assert r.status_code == 422, "非法排序字段未拦截"
+    print("[5.1] 后台列表栏目筛选 + 服务端排序 OK")
+
     # 6. 用户观看埋点
     r = client.post(f"{BASE}/events", headers=user_h, json={"event_type": "view", "article_id": aid})
     assert r.json()["ok"], "观看埋点失败"
