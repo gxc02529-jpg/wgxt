@@ -4,6 +4,7 @@ from .user import User
 from .category import Category
 from .channel import Channel, article_channels
 from .article import Article, article_categories
+from .article_embedding import ArticleEmbedding
 from .review import ArticleReview
 from .resource import Resource
 from .portal import PortalModule
@@ -24,5 +25,5 @@ __all__ = [
     "Channel", "article_channels",
     "Resource", "PortalModule", "EventLog", "UserAction", "AnonymousAction",
     "SystemSetting", "DifyWorkflow", "ViewHistory", "AICallLog", "AITask", "AICorrection",
-    "Comment", "CheckinLog",
+    "Comment", "CheckinLog", "ArticleEmbedding",
 ]

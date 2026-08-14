@@ -7,7 +7,7 @@ import json
 
 from app.database import Base, engine, SessionLocal, ensure_database, ensure_schema_compat
 from app.models import (  # noqa: F401
-    user, category, channel, article, review, resource, portal, event, interaction,
+    user, category, channel, article, article_embedding, review, resource, portal, event, interaction,
     anonymous_action, system_setting, dify_workflow, view_history, ai_call, ai_task,
     ai_correction, comment, checkin,
 )

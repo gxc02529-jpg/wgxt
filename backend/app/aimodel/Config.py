@@ -10,5 +10,7 @@ class Config:
     def __init__(self):
         self.root_path = current_path.parent
 
+        self.model_file_path=self.root_path / 'model' / 'bert-base-chinese'
+
         # bert模型保存路径
         self.model_path = self.root_path / 'model' / 'bert_model.pt' #pytorch框架

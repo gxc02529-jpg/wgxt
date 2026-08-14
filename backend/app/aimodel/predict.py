@@ -72,7 +72,7 @@ class BertLinear(nn.Module):
         # _ bert每个位置 first第一个位置
         out = self.fc(first)
         return out
-tokenizer = BertTokenizer.from_pretrained(config.root_path / 'model' / 'bert-base-chinese')  # 加载BERT向量化器
+tokenizer = BertTokenizer.from_pretrained(config.model_file_path)  # 加载BERT向量化器
 # 1 加载保存的模型
 model = BertLinear()  # 或者你的模型类
 model.load_state_dict(torch.load(config.model_path, weights_only=True))

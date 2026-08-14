@@ -9,6 +9,10 @@
         <p class="admin-head__sub">账号、角色与状态管理，可创建管理员 / 编辑 / 普通用户</p>
       </div>
       <div class="admin-head__actions">
+        <el-button type="danger" plain :disabled="!selectedRows.length" @click="batchRemove">
+          <el-icon><Delete /></el-icon>
+          批量删除{{ selectedRows.length ? `（${selectedRows.length}）` : '' }}
+        </el-button>
         <el-button type="primary" @click="openForm()">创建账号</el-button>
       </div>
     </div>
@@ -29,7 +33,9 @@
         <el-button type="primary" @click="reload">查询</el-button>
       </div>
 
-      <el-table :data="users" v-loading="loading">
+      <el-table :data="users" v-loading="loading" @selection-change="handleSelectionChange">
+        <!-- 多选列：批量删除用；当前登录账号不可选（后端禁止删除自己） -->
+        <el-table-column type="selection" width="48" :selectable="isSelectable" />
         <el-table-column prop="id" label="ID" width="64" />
         <el-table-column label="用户" min-width="180">
           <template #default="{ row }">
@@ -121,8 +127,9 @@
 <script setup>
 import { onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { User } from '@element-plus/icons-vue'
+import { Delete, User } from '@element-plus/icons-vue'
 import { userApi } from '../../api'
+import { useAuthStore } from '../../stores/auth'
 
 const roleLabel = { user: '普通用户', editor: '编辑', moderator: '管理员', admin: '系统管理员' }
 const roleBadge = { user: 'status-badge--gray', editor: 'status-badge--orange', moderator: 'status-badge--blue', admin: 'status-badge--red' }
@@ -132,6 +139,9 @@ const page = ref(1)
 const pageSize = 10
 const loading = ref(false)
 const filters = reactive({ keyword: '', role: '', status: '' })
+// 批量删除：当前勾选的用户；auth 用于禁选当前登录账号
+const selectedRows = ref([])
+const auth = useAuthStore()
 const dialogVisible = ref(false)
 const editing = ref(null)
 const saving = ref(false)
@@ -236,6 +246,46 @@ async function remove(row) {
   } catch (e) {
     if (e !== 'cancel' && e !== 'close') ElMessage.error(String(e))
   }
+}
+
+// 当前登录账号不允许勾选删除（后端会拒绝，直接禁选更直观）
+function isSelectable(row) {
+  return row.id !== auth.user?.id
+}
+
+function handleSelectionChange(rows) {
+  selectedRows.value = rows
+}
+
+// 批量删除：一次确认后复用单条删除接口逐个删除，汇总成功/失败数量
+async function batchRemove() {
+  if (!selectedRows.value.length) return
+  try {
+    await ElMessageBox.confirm(
+      `确定删除选中的 ${selectedRows.value.length} 个用户？其创建的文稿将一并删除，上传的资源会转移给系统管理员，此操作不可恢复。`,
+      '批量删除确认',
+      { type: 'warning' },
+    )
+  } catch {
+    return
+  }
+  let ok = 0
+  let fail = 0
+  for (const row of selectedRows.value) {
+    try {
+      await userApi.remove(row.id)
+      ok++
+    } catch {
+      fail++
+    }
+  }
+  selectedRows.value = []
+  if (fail) {
+    ElMessage.warning(`已删除 ${ok} 个，失败 ${fail} 个`)
+  } else {
+    ElMessage.success(`已删除 ${ok} 个用户`)
+  }
+  load()
 }
 
 onMounted(load)
