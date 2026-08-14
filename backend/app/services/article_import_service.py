@@ -29,6 +29,7 @@ from ..models.user import User
 from ..services.oss_service import get_oss_config
 from ..services.storage_service import save_bytes
 from ..services.text_utils import strip_html
+from .embedding_service import sync_articles_batch
 
 # 表头别名 → 标准列名
 HEADER_MAP = {
@@ -198,6 +199,7 @@ def import_excel(db: Session, user: User, file_bytes: bytes, filename: str) -> d
 
     oss_cfg = get_oss_config(db)
     imported, skipped, failed, warnings = 0, [], [], []
+    created = []  # 本次成功导入的文稿，循环结束后批量向量化入库
     img_cache = {}  # 本次导入内按原图 URL 去重
     row_no = 0
     for row in ws.iter_rows(values_only=True):
@@ -273,7 +275,12 @@ def import_excel(db: Session, user: User, file_bytes: bytes, filename: str) -> d
         db.flush()
         article.categories = cats
         db.commit()
+        created.append(article)
         imported += 1
+
+    # 导入文稿批量向量化入库（尽力而为：失败不影响导入结果，全量回填接口可修复）
+    if created and sync_articles_batch(db, created):
+        db.commit()
 
     wb.close()
     return {

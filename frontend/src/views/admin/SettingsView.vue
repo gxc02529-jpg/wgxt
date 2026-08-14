@@ -52,6 +52,16 @@
               <el-button type="primary" plain size="small" @click="openKbDialog">编辑</el-button>
             </div>
           </div>
+
+          <div class="settings-row">
+            <div class="settings-row__info">
+              <div class="settings-row__title">文稿向量化</div>
+              <p class="settings-row__desc">将全部文稿的"分类：标题"向量化存入 article_embeddings，供个性化推荐召回；重复执行覆盖旧向量</p>
+            </div>
+            <div class="settings-row__control">
+              <el-button type="primary" plain size="small" :loading="vectorizing" @click="vectorizeArticles">执行向量化</el-button>
+            </div>
+          </div>
         </div>
       </section>
 
@@ -243,7 +253,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Coin, Document, Monitor, Setting, Wallet } from '@element-plus/icons-vue'
-import { portalApi, settingsApi } from '../../api'
+import { embeddingApi, portalApi, settingsApi } from '../../api'
 
 const loading = ref(true)
 
@@ -274,6 +284,8 @@ const ossForm = ref({
 const kbDialogVisible = ref(false)
 const kbText = ref('')
 const savingKb = ref(false)
+// 文稿向量化执行状态
+const vectorizing = ref(false)
 
 onMounted(async () => {
   try {
@@ -341,6 +353,28 @@ async function savePointsRange() {
     ElMessage.error(String(e))
   } finally {
     savingPoints.value = false
+  }
+}
+
+// 全量文稿向量化：耗时较长（首次调用含模型加载），确认后执行
+async function vectorizeArticles() {
+  try {
+    await ElMessageBox.confirm(
+      '将全部文稿向量化并写入向量库？首次执行包含模型加载，可能需要数十秒。',
+      '文稿向量化',
+      { type: 'warning', confirmButtonText: '开始执行', cancelButtonText: '取消' },
+    )
+  } catch {
+    return
+  }
+  vectorizing.value = true
+  try {
+    const res = await embeddingApi.vectorize()
+    ElMessage.success(`${res.message}，当前库内向量 ${res.stats?.total ?? res.total} 条`)
+  } catch (e) {
+    ElMessage.error(String(e))
+  } finally {
+    vectorizing.value = false
   }
 }
 

@@ -36,6 +36,66 @@ def hash_source_text(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
+# 嵌入模型版本标识（与 app/aiVectorizationModel 对应；换模型时 bump 并全量重算）
+MODEL_VERSION = "BAAI_bge-small-zh"
+
+
+def build_article_text(article) -> str:
+    """向量化文本规则："分类1,分类2：标题"；无分类时仅标题（全量接口与单篇钩子共用）"""
+    category_names = ",".join(c.name for c in article.categories)
+    return f"{category_names}：{article.title}" if category_names else article.title
+
+
+def sync_article_embedding(db: Session, article) -> bool:
+    """单篇文稿向量化入库（文稿创建/编辑后调用；调用方 commit）。
+
+    尽力而为：模型加载/向量化失败仅告警，不阻断文稿保存，
+    之后可用全量回填接口 POST /api/embeddings/vectorize 修复。
+    返回是否实际执行了向量化（源文本未变跳过 / 失败时返回 False）。
+    """
+    try:
+        text = build_article_text(article)
+        new_hash = hash_source_text(text)
+        old = db.get(ArticleEmbedding, article.id)
+        if old and old.source_hash == new_hash:
+            return False  # 标题/分类未变化，跳过重算
+        from ..aiVectorizationModel.predict import predict_fun  # 惰性导入：避免启动即加载模型
+        vectors = predict_fun([text])
+        upsert_embedding(db, article.id, vectors[0], MODEL_VERSION, new_hash)
+        return True
+    except Exception as e:
+        print(f"[embedding] 单篇向量化失败，已跳过（文稿 id={getattr(article, 'id', None)}）：{e}")
+        return False
+
+
+def sync_articles_batch(db: Session, articles) -> int:
+    """批量文稿向量化入库（批量导入后调用；调用方 commit），仅编码新增/变更的文稿。
+
+    返回实际向量化的数量；尽力而为语义同 sync_article_embedding。
+    """
+    try:
+        pending = []  # [(article, text, new_hash)]
+        for article in articles:
+            text = build_article_text(article)
+            new_hash = hash_source_text(text)
+            old = db.get(ArticleEmbedding, article.id)
+            if old and old.source_hash == new_hash:
+                continue
+            pending.append((article, text, new_hash))
+        if not pending:
+            return 0
+        from ..aiVectorizationModel.predict import predict_fun  # 惰性导入
+        vectors = predict_fun([text for _, text, _ in pending])
+        if len(vectors) != len(pending):
+            raise RuntimeError(f"向量化结果数量异常：期望 {len(pending)}，实际 {len(vectors)}")
+        for (article, _text, new_hash), vector in zip(pending, vectors):
+            upsert_embedding(db, article.id, vector, MODEL_VERSION, new_hash)
+        return len(pending)
+    except Exception as e:
+        print(f"[embedding] 批量向量化失败，已跳过（{len(articles)} 篇）：{e}")
+        return 0
+
+
 # ---------------- 增 / 改 ----------------
 
 def upsert_embedding(

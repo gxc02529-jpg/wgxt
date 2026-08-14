@@ -172,6 +172,12 @@ export const settingsApi = {
   remove: (key) => client.delete(`/settings/${key}`),
 }
 
+// ---- 文稿向量化（个性化推荐召回，管理员）----
+export const embeddingApi = {
+  // 全量文稿向量化入库：首次调用含模型加载，耗时可达数十秒，单独放宽超时
+  vectorize: () => client.post('/embeddings/vectorize', null, { timeout: 180000 }),
+}
+
 // ---- Dify 工作流 ----
 export const difyApi = {
   list: () => client.get('/dify/workflows'),

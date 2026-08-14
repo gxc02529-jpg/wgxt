@@ -22,6 +22,7 @@ from ..models.review import ArticleReview
 from ..models.user import User
 from ..models.view_history import ViewHistory
 from ..schemas.article import ArticleIn
+from ..services import embedding_service
 from ..services.article_import_service import import_excel
 from ..services.settings_service import get_setting
 from ..services.text_utils import strip_html
@@ -229,6 +230,9 @@ def create_article(body: ArticleIn, db: Session = Depends(get_db), user: User = 
     _apply_channels(db, article, body.channel_ids)
     db.commit()
     db.refresh(article)
+    # 向量化入库：尽力而为，向量化失败不影响草稿保存（全量回填接口可修复）
+    if embedding_service.sync_article_embedding(db, article):
+        db.commit()
     return {"message": "草稿已保存", "article": article.to_dict()}
 
 
@@ -268,6 +272,9 @@ def update_article(article_id: int, body: ArticleIn, db: Session = Depends(get_d
     _apply_channels(db, article, body.channel_ids)
     db.commit()
     db.refresh(article)
+    # 向量化入库：标题/分类未变时跳过；尽力而为，失败不影响保存
+    if embedding_service.sync_article_embedding(db, article):
+        db.commit()
     return {"message": "保存成功", "article": article.to_dict()}
 
 
