@@ -35,7 +35,7 @@ def predict_fun(sentences):
 if __name__ == '__main__':
     # 2. 准备待向量化的文本（你的文稿标题+分类）
     sentences = [
-        "时政：特朗普宣布参加2024年总统选举"
+        "政治：特朗普宣布参加2024年总统选举"
     ]
     predict_fun(sentences)
 
