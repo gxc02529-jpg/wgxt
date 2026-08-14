@@ -14,6 +14,7 @@ from .system_setting import SystemSetting
 from .dify_workflow import DifyWorkflow
 from .view_history import ViewHistory
 from .ai_call import AICallLog
+from .ai_task import AITask
 from .comment import Comment
 from .checkin import CheckinLog
 
@@ -22,4 +23,5 @@ __all__ = [
     "Channel", "article_channels",
     "Resource", "PortalModule", "EventLog", "UserAction", "AnonymousAction",
     "SystemSetting", "DifyWorkflow", "ViewHistory", "AICallLog", "Comment", "CheckinLog",
+    "AITask",
 ]

@@ -324,6 +324,11 @@ const activeCheckIndex = ref(-1)
 const scoreItems = ref([])
 const scoreTotal = ref('')
 
+// 异步任务轮询：每 2 秒一次，最长 5 分钟（当前假实现秒级完成，接入真实模型后保持即可）
+const POLL_INTERVAL_MS = 2000
+const POLL_MAX_TIMES = 150
+let pollAbort = false
+
 // 正文纯文本（优先用编辑器同步的 content_source，缺失时剥离 HTML，用于启用判断与高亮定位）
 const contentText = computed(() => {
   const source = props.form?.content_source || ''
@@ -389,6 +394,7 @@ function scorePercent(point) {
 
 async function run(key) {
   loading[key] = true
+  pollAbort = false
   try {
     const payload = {
       title: props.form.title || '',
@@ -397,8 +403,29 @@ async function run(key) {
       content: contentText.value,
       category_ids: props.form.category_ids || [],
     }
-    const res = await aiAssistApi[key](payload)
-    const data = res.data
+    // 1. 提交异步任务：接口立即返回 task_id，不等待模型结果（拦截器已返回响应体 data）
+    const submitRes = await aiAssistApi[key](payload)
+    const taskId = submitRes?.task_id
+    if (!taskId) throw new Error('AI 任务提交失败，请稍后重试')
+
+    // 2. 轮询任务状态直到成功 / 失败 / 超时；关闭弹窗会中止本轮轮询
+    let data = null
+    for (let i = 0; i < POLL_MAX_TIMES; i++) {
+      if (pollAbort) return
+      await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS))
+      if (pollAbort) return
+      const status = await aiAssistApi.getTask(taskId)
+      if (status.status === 'success') {
+        data = status.result
+        break
+      }
+      if (status.status === 'failed') {
+        throw new Error(status.error || 'AI 任务执行失败，请稍后重试')
+      }
+    }
+    if (!data) throw new Error('AI 任务处理超时，可稍后在后台「AI 调用记录」中查看')
+
+    // 3. 结果回写（与改造前行为一致）
     if (key === 'classify') {
       classifyResult.value = data.category_name
       const hit = props.categories.find((c) => c.name === data.category_name)
@@ -433,6 +460,7 @@ watch(
   () => props.modelValue,
   (val) => {
     if (val) {
+      pollAbort = false
       editTab.value = 'edit'
       classifyResult.value = ''
       summaryResult.value = ''
@@ -441,6 +469,9 @@ watch(
       activeCheckIndex.value = -1
       scoreItems.value = []
       scoreTotal.value = ''
+    } else {
+      // 关闭弹窗：中止进行中的轮询，避免组件销毁后仍在后台查询
+      pollAbort = true
     }
   },
 )

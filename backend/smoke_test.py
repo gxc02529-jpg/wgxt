@@ -17,6 +17,19 @@ def login(client, username, password):
     return r.json()["access_token"]
 
 
+def wait_ai_task(client, headers, task_id, max_wait=30):
+    """轮询 AI 任务直到 success/failed，超时抛断言失败（假实现秒级完成）"""
+    deadline = time.time() + max_wait
+    while time.time() < deadline:
+        r = client.get(f"{BASE}/ai/assist/tasks/{task_id}", headers=headers)
+        assert r.status_code == 200, f"查询任务失败: {r.text}"
+        data = r.json()
+        if data["status"] in ("success", "failed"):
+            return data
+        time.sleep(0.3)
+    raise AssertionError(f"AI 任务 {task_id} 轮询超时（{max_wait}s）")
+
+
 def main():
     client = httpx.Client(timeout=10)
     ed_token = login(client, "editor", "editor123")
@@ -393,6 +406,61 @@ def main():
     r = client.get(f"{BASE}/portal/banner/random", headers=user_h)
     assert r.status_code == 403, f"非管理员应 403: {r.text}"
     print("[17] 随机选取边界/权限校验 OK")
+
+    # 18. AI 协作台异步任务：提交立即返回 task_id，轮询后拿到与假实现一致的结果
+    ai_title = f"AI异步测试文稿_{uniq}"
+    ai_content = "<p>这是一篇用于 AI 异步任务测试的正文。</p>"
+
+    # 未登录提交拒绝
+    r = client.post(f"{BASE}/ai/assist/classify", json={"title": ai_title})
+    assert r.status_code == 401, f"未登录提交 AI 任务应 401: {r.text}"
+    print("[18] AI 任务未登录拒绝 OK")
+
+    # 缺前置输入拒绝（分类必须有标题）
+    r = client.post(f"{BASE}/ai/assist/classify", headers=ed_h, json={"title": ""})
+    assert r.status_code == 400, f"缺少标题应 400: {r.text}"
+    print("[18] AI 任务入参校验 OK")
+
+    # 逐个提交 5 类任务并轮询到成功，校验结果结构与占位实现一致
+    cases = [
+        ("classify", {"title": ai_title}, lambda d: d["category_name"] == "时政"),
+        ("summary", {"title": ai_title, "content": ai_content}, lambda d: d["summary"] == "这是摘要"),
+        ("review", {"title": ai_title, "content": ai_content}, lambda d: set(d) >= {"色情内容", "用语文明"}),
+        ("check", {"content": ai_content}, lambda d: len(d.get("items", [])) >= 2),
+        ("score", {"content": ai_content}, lambda d: d["总分"] == "80/100"),
+    ]
+    for name, payload, check in cases:
+        r = client.post(f"{BASE}/ai/assist/{name}", headers=ed_h, json=payload)
+        assert r.status_code == 200, f"{name} 提交任务失败: {r.text}"
+        task_id = r.json()["task_id"]
+        assert r.json()["status"] == "pending", f"{name} 初始状态应为 pending: {r.text}"
+        done = wait_ai_task(client, ed_h, task_id)
+        assert done["status"] == "success", f"{name} 任务失败: {done}"
+        assert done["feature_name"], f"{name} 应返回功能中文名"
+        assert check(done["result"]), f"{name} 结果不符合占位实现: {done['result']}"
+        print(f"[18] AI {name} 异步任务 OK  task_id={task_id} status={done['status']}")
+
+    # 权限：普通用户查询他人任务 403；查询不存在的任务 404；本人可查
+    first_task_id = None
+    r = client.post(f"{BASE}/ai/assist/classify", headers=ed_h, json={"title": ai_title})
+    first_task_id = r.json()["task_id"]
+    r = client.get(f"{BASE}/ai/assist/tasks/{first_task_id}", headers=user_h)
+    assert r.status_code == 403, f"普通用户查他人任务应 403: {r.text}"
+    r = client.get(f"{BASE}/ai/assist/tasks/99999999", headers=ed_h)
+    assert r.status_code == 404, f"不存在的任务应 404: {r.text}"
+    r = client.get(f"{BASE}/ai/assist/tasks/{first_task_id}", headers=ed_h)
+    assert r.status_code == 200, f"本人查询任务失败: {r.text}"
+    print("[18] AI 任务权限/404/本人查询 OK")
+
+    # 后台 AI 调用记录应包含本次异步任务产生的成功记录（最近一条分类记录入参匹配）
+    r = client.get(f"{BASE}/admin/ai-calls", headers=admin_h, params={"feature_type": 1, "page_size": 5})
+    assert r.status_code == 200, f"查询 AI 调用记录失败: {r.text}"
+    logs = r.json()["items"]
+    assert any(
+        (log.get("input_params") or {}).get("title") == ai_title
+        for log in logs
+    ), "后台 AI 调用记录应包含异步任务产生的记录"
+    print(f"[18] AI 调用记录落库 OK  total={r.json()['total']}")
 
     print("\nALL SMOKE TESTS PASSED")
 

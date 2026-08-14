@@ -6,7 +6,7 @@
 from app.database import Base, engine, SessionLocal, ensure_database, ensure_schema_compat
 from app.models import (  # noqa: F401
     user, category, channel, article, review, resource, portal, event, interaction,
-    anonymous_action, system_setting, dify_workflow, view_history, ai_call, comment, checkin,
+    anonymous_action, system_setting, dify_workflow, view_history, ai_call, ai_task, comment, checkin,
 )
 from app.core.security import hash_password
 from app.models.user import User

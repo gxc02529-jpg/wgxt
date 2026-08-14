@@ -181,13 +181,14 @@ export const difyApi = {
   run: (id, data) => client.post(`/dify/workflows/${id}/run`, data),
 }
 
-// ---- AI 协作台（写稿页 AI 辅助功能，后端当前为占位实现）----
+// ---- AI 协作台（写稿页 AI 辅助功能：提交异步任务后轮询状态）----
 export const aiAssistApi = {
   classify: (data) => client.post('/ai/assist/classify', data),
   summary: (data) => client.post('/ai/assist/summary', data),
   review: (data) => client.post('/ai/assist/review', data),
   check: (data) => client.post('/ai/assist/check', data),
   score: (data) => client.post('/ai/assist/score', data),
+  getTask: (taskId) => client.get(`/ai/assist/tasks/${taskId}`),
 }
 
 // ---- 后台 AI 调用记录（管理员）----
