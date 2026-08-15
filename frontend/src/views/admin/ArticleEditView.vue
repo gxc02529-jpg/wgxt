@@ -18,7 +18,7 @@
         >
           AI写作助手
         </el-button>
-        <el-button class="ai-assist-btn" @click="aiVisible = true">
+        <el-button v-if="!smartCollectReview" class="ai-assist-btn" @click="aiVisible = true">
           <el-icon><MagicStick /></el-icon>
           <span>AI 协作台</span>
         </el-button>
