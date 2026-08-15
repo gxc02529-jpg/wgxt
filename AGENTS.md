@@ -4,9 +4,13 @@
 
 ## 项目根目录与修改基准
 
-- 本项目已从 `E:\xiangmu\python\wgxt` **迁移**到 `E:\xiangmu\python\wgxt001`。
-- **一切代码修改、阅读、运行均以 `E:\xiangmu\python\wgxt001` 为准**，旧目录 `E:\xiangmu\python\wgxt` 不再使用、不要修改。
-- 目录内已存在的内容（如 `backend/lan_scan.py`、`.idea/`、`uploads/`、日志文件、截图）属用户自有文件，除非任务明确要求，否则不要删除或改动。
+- 本项目开发基准目录为 `E:\xiangmu\python\wgxt002`（自 git 远程 `dev-1.003` 分支全新拉取，
+  2026-08 起以此目录为准）。
+- **一切代码修改、阅读、运行均以 `E:\xiangmu\python\wgxt002` 为准**，
+  旧目录 `E:\xiangmu\python\wgxt001`（及更早的 `E:\xiangmu\python\wgxt`）不再使用、不要修改，
+  仅作模型/数据备份。
+- 目录内已存在的内容（如 `backend/lan_scan.py`、`.idea/`、`uploads/`、日志文件、截图）
+  属用户自有文件，除非任务明确要求，否则不要删除或改动。
 
 ## 项目简介
 
@@ -29,6 +33,7 @@
 # 后端：安装依赖 → 自动建库/建表/兼容迁移/种子数据与系统配置（幂等） → 启动（端口 8000，接口文档 /docs）
 cd backend
 python -m pip install -r requirements.txt
+python install_ai_deps.py   # 安装 AI 依赖（torch/transformers），自动检测 GPU，无 GPU 自动装 CPU 版
 python init_db.py   # 若 MySQL 上无 wengaofabu 库会自动创建，可重复执行
 python run.py
 
