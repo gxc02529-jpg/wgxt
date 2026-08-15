@@ -395,8 +395,9 @@ def _pick_explore(
 
     输出：选中的文稿 id；池子被排除/占用后为空则返回 None（调用方不加探索位）。
 
-    实现说明：从剩余候选里按"热度 + 随机扰动"取最高分，保证探索位虽然
-    与用户偏好差距大，但仍是相对热门的文稿，用户不会觉得内容莫名其妙。
+    实现说明：先按热度取质量最高的 top-3（探索位虽然与用户偏好差距大，
+    但仍是相对热门的文稿，用户不会觉得内容莫名其妙），再从 top-3 里随机抽 1 篇——
+    避免固定选热度最高的一篇导致探索位永不变化。
     """
     pool = [aid for aid in explore_ids if aid not in excluded and aid not in chosen]
     if not pool:
@@ -410,9 +411,13 @@ def _pick_explore(
             + a.favorite_count * HOT_WEIGHTS["favorite_count"]
             + a.share_count * HOT_WEIGHTS["share_count"]
         )
-        scored.append((a.id, hot * (NOISE_MIN + NOISE_SPAN * random.random())))
+        scored.append((a.id, hot))
     scored.sort(key=lambda item: item[1], reverse=True)
-    return scored[0][0] if scored else None
+    if not scored:
+        return None
+    # 热度 top-3 内随机：质量有保障，且每次探索位可能不同
+    top_n = min(3, len(scored))
+    return random.choice(scored[:top_n])[0]
 
 
 def _recommend_by_vector(db: Session, user: User, limit: int) -> list[Article]:

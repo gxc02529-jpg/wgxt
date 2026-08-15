@@ -26,7 +26,12 @@ client.interceptors.response.use(
       auth.logout()
       router.push({ name: 'login', query: { redirect: router.currentRoute.value.fullPath } })
     }
-    return Promise.reject(err.response?.data?.detail || err.message || '请求失败')
+    // 422 等校验错误的 detail 是数组，转成可读文本，避免页面显示 "[object Object]"
+    const detail = err.response?.data?.detail
+    const msg = Array.isArray(detail)
+      ? detail.map((d) => d.msg || JSON.stringify(d)).join('；')
+      : detail
+    return Promise.reject(msg || err.message || '请求失败')
   },
 )
 

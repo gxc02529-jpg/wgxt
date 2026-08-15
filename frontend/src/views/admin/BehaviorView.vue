@@ -20,10 +20,10 @@
               placeholder="搜索用户名 / 昵称 / 文稿标题"
               clearable
               style="width: 300px"
-              @keyup.enter="load"
-              @clear="load"
+              @keyup.enter="load()"
+              @clear="load()"
             />
-            <el-button type="primary" @click="load">查询</el-button>
+            <el-button type="primary" @click="load()">查询</el-button>
             <span class="admin-count">共 <strong>{{ total }}</strong> 条观看记录，累计 <strong>{{ formatDuration(totalWatchSeconds) }}</strong></span>
           </div>
           <el-table :data="items" v-loading="loading">
@@ -137,7 +137,9 @@ function formatDuration(seconds) {
 }
 
 async function load(p) {
-  if (p) page.value = p
+  // 只接受数字页码（分页组件传数字）；按钮/回车/清空触发时不传参，
+  // 显式类型判断避免事件对象被误当作页码（此前曾把 PointerEvent 传给后端导致 422）
+  if (typeof p === 'number' && Number.isFinite(p)) page.value = p
   loading.value = true
   try {
     const res = await behaviorApi.viewHistory({
