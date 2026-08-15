@@ -76,6 +76,8 @@ const menuGroups = [
       { path: '/admin/articles', label: '文稿管理', roles: ['admin', 'editor', 'moderator'] },
       { path: '/admin/reviews', label: '审核管理', roles: ['admin', 'moderator'] },
       { path: '/admin/resources', label: '资源管理', roles: ['admin', 'editor', 'moderator'] },
+      { path: '/admin/smart-collect', label: '智能采编', roles: ['admin', 'editor'] },
+      { path: '/admin/smart-collect/evaluation', label: '采编评估', roles: ['admin', 'editor'] },
     ],
   },
   {
@@ -122,6 +124,7 @@ const visibleGroups = computed(() => {
 // 高亮当前菜单项（编辑页归入文稿管理）
 const activeMenu = computed(() => {
   if (route.path.startsWith('/admin/articles')) return '/admin/articles'
+  if (route.path.startsWith('/admin/smart-collect')) return '/admin/smart-collect'
   return route.path
 })
 </script>

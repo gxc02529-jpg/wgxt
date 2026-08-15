@@ -4,10 +4,17 @@
 """
 from pathlib import Path
 
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # .env 固定放在 backend 目录下，与启动目录无关，保证从任意位置运行都能读到
 ENV_FILE = Path(__file__).resolve().parent.parent / ".env"
+
+# 项目根目录（backend/app/config.py 向上三级）
+PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
+
+# 本地已下载的 multilingual-e5-small 模型目录，相对项目根目录，优先于 Hugging Face 在线加载
+LOCAL_EMBEDDING_MODEL_PATH = "backend/app/multilingual-e5-small"
 
 
 class Settings(BaseSettings):
@@ -35,6 +42,27 @@ class Settings(BaseSettings):
     DIFY_API_BASE: str = ""                # Dify API 地址，如 https://api.dify.ai/v1 或自建域名
     DIFY_API_KEY: str = ""                 # Dify 应用 API Key（app-xxx）
     DIFY_TIMEOUT: int = 30                 # 调用超时（秒）
+
+    # Tavily 新闻搜索：Key 只从后端环境变量或 backend/.env 读取，不下发前端。
+    TAVILY_API_KEY: str = ""
+    TAVILY_TIMEOUT: int = 15
+
+    # 本地Embedding：默认加载相对项目根目录的 backend/app/multilingual-e5-small，可用 .env 覆盖
+    EMBEDDING_MODEL_NAME: str = LOCAL_EMBEDDING_MODEL_PATH
+    EMBEDDING_DEVICE: str = "auto"
+
+    # Grounded事件整理LLM：真实Key只允许来自环境变量或backend/.env。
+    # 兼容本机已有OPENAI_API_KEY；项目显式LLM_API_KEY具有更高优先级。
+    LLM_API_KEY: str = Field(
+        default="",
+        validation_alias=AliasChoices(
+            "LLM_API_KEY",
+            "OPENAI_API_KEY",
+        ),
+    )
+    LLM_BASE_URL: str = "https://dashscope.aliyuncs.com/compatible-mode/v1"
+    LLM_MODEL: str = "qwen3.7-plus"
+    LLM_TIMEOUT: int = 90
 
 
 settings = Settings()

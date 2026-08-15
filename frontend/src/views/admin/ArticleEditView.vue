@@ -10,6 +10,14 @@
         <h1 class="edit-title">{{ isEdit ? '编辑文稿' : '写新文稿' }}</h1>
       </div>
       <div class="edit-toolbar__actions">
+        <el-button
+          v-if="canUseAiWriting"
+          type="success"
+          :loading="aiWritingLoading"
+          @click="generateAiWriting"
+        >
+          AI写作助手
+        </el-button>
         <el-button class="ai-assist-btn" @click="aiVisible = true">
           <el-icon><MagicStick /></el-icon>
           <span>AI 协作台</span>
@@ -18,6 +26,15 @@
         <el-button type="primary" :loading="submitting" @click="save(true)">提交审核</el-button>
       </div>
     </header>
+
+    <el-alert
+      v-if="aiWritingLoading"
+      title="Qwen正在根据已确认事实生成文章草稿……"
+      type="info"
+      show-icon
+      :closable="false"
+      class="ai-writing-loading"
+    />
 
     <el-form
       ref="formRef"
@@ -140,6 +157,140 @@
       </aside>
     </el-form>
 
+    <section v-if="aiWritingPreview" class="ai-writing-preview">
+      <div class="ai-writing-preview__head">
+        <div>
+          <h2>AI写作建议</h2>
+          <p>当前仅为预览；采用后仍需点击“保存草稿”才会写入数据库。</p>
+        </div>
+        <div class="ai-writing-preview__meta">
+          <el-tag type="success">{{ aiWritingPreview.model }}</el-tag>
+          <el-tag type="info">Synthesis v{{ aiWritingPreview.synthesis_version }}</el-tag>
+          <el-tag type="info">core_facts {{ aiWritingPreview.approved_core_fact_count }} 条</el-tag>
+          <el-tag type="info">{{ aiWritingPreview.elapsed_ms }} ms</el-tag>
+          <el-tag type="info">
+            Token {{ aiWritingPreview.input_tokens ?? '-' }} + {{ aiWritingPreview.output_tokens ?? '-' }}
+            = {{ aiWritingPreview.total_tokens ?? '-' }}
+          </el-tag>
+          <el-tag type="info">正文 {{ aiWritingPreview.result.content_html.length }} 字符</el-tag>
+        </div>
+      </div>
+
+      <div class="ai-writing-suggestion">
+        <div class="ai-writing-suggestion__label">
+          <h3>AI建议标题</h3>
+          <el-button size="small" @click="adoptAiTitle">采用标题</el-button>
+        </div>
+        <p>{{ aiWritingPreview.result.title }}</p>
+      </div>
+
+      <div class="ai-writing-suggestion">
+        <div class="ai-writing-suggestion__label">
+          <h3>AI建议摘要</h3>
+          <el-button size="small" @click="adoptAiSummary">采用摘要</el-button>
+        </div>
+        <p>{{ aiWritingPreview.result.summary }}</p>
+      </div>
+
+      <div class="ai-writing-suggestion">
+        <div class="ai-writing-suggestion__label">
+          <h3>AI建议正文</h3>
+          <el-button size="small" @click="adoptAiContent">采用正文</el-button>
+        </div>
+        <div class="article-content ai-writing-content" v-html="aiWritingPreview.result.content_html"></div>
+      </div>
+
+      <div class="ai-writing-preview__actions">
+        <el-button type="primary" @click="adoptAllAiWriting">全部采用</el-button>
+        <el-button @click="aiWritingPreview = null">关闭</el-button>
+      </div>
+    </section>
+
+    <section v-if="smartCollectReview" class="smart-collect-review">
+      <div class="smart-collect-review__head">
+        <div>
+          <h2>智能采编来源</h2>
+          <p>来源与 AI 审核提示仅供编辑查看，不会写入文稿正文。</p>
+        </div>
+        <el-tag type="info">来源数量 {{ smartCollectReview.source_count }}</el-tag>
+      </div>
+
+      <div class="smart-collect-sources">
+        <article
+          v-for="source in smartCollectReview.sources"
+          :key="source.clue_id"
+          class="smart-collect-source"
+        >
+          <div class="smart-collect-source__title">
+            <strong>SOURCE[{{ source.clue_id }}]</strong>
+            <span>{{ source.title }}</span>
+          </div>
+          <dl>
+            <div>
+              <dt>clue_id</dt>
+              <dd>{{ source.clue_id }}</dd>
+            </div>
+            <div>
+              <dt>来源网站</dt>
+              <dd>{{ source.source || '未记录' }}</dd>
+            </div>
+            <div>
+              <dt>原始 URL</dt>
+              <dd>
+                <a
+                  v-if="isHttpUrl(source.url)"
+                  :href="source.url"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >{{ source.url }}</a>
+                <span v-else>{{ source.url || '未记录' }}</span>
+              </dd>
+            </div>
+          </dl>
+          <el-button
+            link
+            type="primary"
+            :disabled="source.content_status !== 'completed'"
+            @click="viewCleanContent(source)"
+          >
+            {{ source.content_status === 'completed' ? '查看清洗正文' : '清洗正文不可用' }}
+          </el-button>
+        </article>
+      </div>
+
+      <div class="ai-review-notes">
+        <h3>AI 审核提示</h3>
+        <div>
+          <h4>conflicts</h4>
+          <p v-if="!smartCollectReview.conflicts.length">未识别到明确冲突。</p>
+          <ul v-else>
+            <li v-for="(conflict, index) in smartCollectReview.conflicts" :key="`conflict-${index}`">
+              {{ conflict.description }}
+              <small>
+                涉及 {{ conflict.source_clue_ids.map((id) => `SOURCE[${id}]`).join('、') }}
+              </small>
+            </li>
+          </ul>
+        </div>
+        <div>
+          <h4>insufficient_evidence</h4>
+          <p v-if="!smartCollectReview.insufficient_evidence.length">未识别到证据不足项。</p>
+          <ul v-else>
+            <li v-for="(item, index) in smartCollectReview.insufficient_evidence" :key="`insufficient-${index}`">
+              {{ item }}
+            </li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <el-dialog v-model="contentDialog.visible" title="清洗后的新闻正文" width="820px" top="5vh">
+      <div v-loading="contentDialog.loading" class="clean-content-dialog">
+        <div v-if="contentDialog.detail" class="article-content" v-html="contentDialog.detail.content || ''"></div>
+        <el-empty v-else-if="!contentDialog.loading" description="暂无清洗正文" />
+      </div>
+    </el-dialog>
+
     <!-- AI 协作台：页面内部窗口，与上方 form 双向绑定 -->
     <AIAssistDrawer v-model="aiVisible" :form="form" :categories="categories" />
   </div>
@@ -148,9 +299,9 @@
 <script setup>
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { Back, MagicStick } from '@element-plus/icons-vue'
-import { articleApi, categoryApi, channelApi } from '../../api'
+import { articleApi, categoryApi, channelApi, smartCollectApi } from '../../api'
 import AIAssistDrawer from '../../components/AIAssistDrawer.vue'
 import RichTextEditor from '../../components/RichTextEditor.vue'
 import ResourcePicker from '../../components/ResourcePicker.vue'
@@ -166,6 +317,11 @@ const saving = ref(false)
 const submitting = ref(false)
 const previewMode = ref(false)
 const aiVisible = ref(false)
+const smartCollectReview = ref(null)
+const aiWritingLoading = ref(false)
+const aiWritingPreview = ref(null)
+const articleStatus = ref('')
+const contentDialog = ref({ visible: false, loading: false, detail: null })
 
 const form = reactive({
   title: '',
@@ -200,6 +356,13 @@ const checklist = computed(() => ({
   content: Boolean((form.content_source || '').trim() || stripHtml(form.content)),
 }))
 
+const canUseAiWriting = computed(() =>
+  isEdit
+  && smartCollectReview.value
+  && ['draft', 'rejected'].includes(articleStatus.value)
+  && !aiWritingLoading.value
+)
+
 onMounted(async () => {
   try {
     const [catRes, chRes] = await Promise.all([categoryApi.list(), channelApi.list()])
@@ -217,6 +380,8 @@ onMounted(async () => {
         category_ids: detail.categories.map((c) => c.id),
         channel_ids: (detail.channels || []).map((c) => c.id),
       })
+      articleStatus.value = detail.status
+      smartCollectReview.value = detail.smart_collect || null
     } else if (defaultChannel) {
       // 新文稿默认勾选基础渠道（后端也会强制包含，这里保证界面一致）
       form.channel_ids = [defaultChannel.id]
@@ -225,6 +390,79 @@ onMounted(async () => {
     ElMessage.error(String(e))
   }
 })
+
+function isHttpUrl(value) {
+  return typeof value === 'string' && /^https?:\/\//i.test(value)
+}
+
+async function viewCleanContent(source) {
+  contentDialog.value = { visible: true, loading: true, detail: null }
+  try {
+    contentDialog.value.detail = await smartCollectApi.getClueContent(source.clue_id)
+  } catch (error) {
+    contentDialog.value.visible = false
+    ElMessage.error(String(error || '正文读取失败'))
+  } finally {
+    contentDialog.value.loading = false
+  }
+}
+
+async function generateAiWriting() {
+  if (!canUseAiWriting.value) return
+  aiWritingLoading.value = true
+  try {
+    aiWritingPreview.value = await articleApi.aiWriting(route.params.id)
+    ElMessage.success('AI写作建议已生成，请预览后选择采用')
+  } catch (error) {
+    ElMessage.error(String(error || 'AI写作助手生成失败，请稍后重试'))
+  } finally {
+    aiWritingLoading.value = false
+  }
+}
+
+function adoptAiTitle() {
+  if (!aiWritingPreview.value) return
+  form.title = aiWritingPreview.value.result.title
+  ElMessage.success('已采用AI建议标题，尚未保存')
+}
+
+function adoptAiSummary() {
+  if (!aiWritingPreview.value) return
+  form.summary = aiWritingPreview.value.result.summary
+  ElMessage.success('已采用AI建议摘要，尚未保存')
+}
+
+async function confirmContentReplacement() {
+  if (!form.content.trim()) return true
+  try {
+    await ElMessageBox.confirm(
+      '采用AI正文将替换当前编辑器内容，是否继续？',
+      '替换确认',
+      { type: 'warning' },
+    )
+    return true
+  } catch {
+    return false
+  }
+}
+
+async function adoptAiContent() {
+  if (!aiWritingPreview.value || !(await confirmContentReplacement())) return
+  form.content = aiWritingPreview.value.result.content_html
+  form.content_source = stripHtml(form.content)
+  previewMode.value = false
+  ElMessage.success('已采用AI建议正文，尚未保存')
+}
+
+async function adoptAllAiWriting() {
+  if (!aiWritingPreview.value || !(await confirmContentReplacement())) return
+  form.title = aiWritingPreview.value.result.title
+  form.summary = aiWritingPreview.value.result.summary
+  form.content = aiWritingPreview.value.result.content_html
+  form.content_source = stripHtml(form.content)
+  previewMode.value = false
+  ElMessage.success('已采用全部AI写作建议，尚未保存')
+}
 
 async function save(submitReview) {
   await formRef.value.validate()
@@ -608,6 +846,143 @@ async function save(submitReview) {
 
 .check-list li.is-done .check-list__state {
   color: var(--color-success);
+}
+
+/* ---- 智能采编：AI写作建议与来源审核 ---- */
+.ai-writing-loading {
+  margin-bottom: var(--space-4);
+}
+
+.ai-writing-preview,
+.smart-collect-review {
+  margin-top: var(--space-5);
+  padding: var(--space-5);
+  background: var(--color-surface);
+  border: 1px solid var(--color-rule);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-card);
+}
+
+.ai-writing-preview__head,
+.smart-collect-review__head,
+.smart-collect-source__title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+}
+
+.ai-writing-preview__head h2,
+.ai-writing-preview__head p,
+.smart-collect-review__head h2,
+.smart-collect-review__head p,
+.ai-review-notes h3,
+.ai-review-notes h4 {
+  margin: 0;
+}
+
+.ai-writing-preview__head p,
+.smart-collect-review__head p {
+  margin-top: var(--space-1);
+  color: var(--color-ink-3);
+}
+
+.ai-writing-preview__meta {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+
+.ai-writing-suggestion {
+  margin-top: var(--space-4);
+}
+
+.ai-writing-suggestion__label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.ai-writing-suggestion p {
+  margin: var(--space-2) 0 0;
+  color: var(--color-ink-2);
+}
+
+.ai-writing-content {
+  margin-top: var(--space-2);
+  padding: var(--space-4);
+  border: 1px solid var(--color-rule);
+  border-radius: var(--radius-sm);
+  background: var(--color-paper);
+}
+
+.ai-writing-preview__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-3);
+  margin-top: var(--space-4);
+}
+
+.smart-collect-sources {
+  display: grid;
+  gap: var(--space-3);
+  margin-top: var(--space-4);
+}
+
+.smart-collect-source,
+.ai-review-notes {
+  padding: var(--space-4);
+  border: 1px solid var(--color-rule);
+  border-radius: var(--radius-sm);
+}
+
+.smart-collect-source__title {
+  justify-content: flex-start;
+}
+
+.smart-collect-source dl {
+  display: grid;
+  gap: var(--space-2);
+  margin: var(--space-3) 0 var(--space-2);
+}
+
+.smart-collect-source dl > div {
+  display: grid;
+  grid-template-columns: 90px minmax(0, 1fr);
+  gap: var(--space-3);
+}
+
+.smart-collect-source dt {
+  color: var(--color-ink-3);
+}
+
+.smart-collect-source dd {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.ai-review-notes {
+  display: grid;
+  gap: var(--space-4);
+  margin-top: var(--space-4);
+}
+
+.ai-review-notes ul {
+  margin: var(--space-2) 0 0;
+  padding-left: var(--space-4);
+  color: var(--color-ink-2);
+}
+
+.ai-review-notes small {
+  display: block;
+  color: var(--color-ink-3);
+}
+
+.clean-content-dialog {
+  min-height: 240px;
 }
 
 /* ---- 响应式 ---- */

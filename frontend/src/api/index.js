@@ -40,6 +40,7 @@ export const articleApi = {
   adminList: (params) => client.get('/articles/admin', { params }),
   create: (data) => client.post('/articles', data),
   update: (id, data) => client.put(`/articles/${id}`, data),
+  aiWriting: (id) => client.post(`/articles/${id}/ai-writing`, null, { timeout: 120000 }),
   submit: (id) => client.post(`/articles/${id}/submit`),
   offline: (id) => client.post(`/articles/${id}/offline`),
   remove: (id) => client.delete(`/articles/${id}`),
@@ -210,4 +211,55 @@ export const aiCorrectionApi = {
   submit: (data) => client.post('/ai/assist/corrections', data),
   list: (params) => client.get('/admin/ai-corrections', { params }),
   exportJson: (params) => client.get('/admin/ai-corrections/export', { params, responseType: 'blob' }),
+}
+
+// ---- 智能采编：临时搜索保留；正式页面使用持久化任务接口 ----
+export const smartCollectApi = {
+  search: (data) => client.post('/smart-collect/search', data, { timeout: 20000 }),
+  createTask: (data) => client.post('/smart-collect/tasks', data),
+  listTasks: (params) => client.get('/smart-collect/tasks', { params }),
+  getTask: (id) => client.get(`/smart-collect/tasks/${id}`),
+  updateRelevance: (taskId, clueId, data) =>
+    client.patch(`/smart-collect/tasks/${taskId}/clues/${clueId}/relevance`, data),
+  similarityPairs: (taskId, params) =>
+    client.get(`/smart-collect/tasks/${taskId}/similarity-pairs`, { params }),
+  listEvents: (taskId) => client.get(`/smart-collect/tasks/${taskId}/events`),
+  createEvent: (taskId, data) => client.post(`/smart-collect/tasks/${taskId}/events`, data),
+  updateEvent: (taskId, eventId, data) =>
+    client.patch(`/smart-collect/tasks/${taskId}/events/${eventId}`, data),
+  addEventClues: (taskId, eventId, data) =>
+    client.post(`/smart-collect/tasks/${taskId}/events/${eventId}/clues`, data),
+  removeEventClue: (taskId, eventId, clueId) =>
+    client.delete(`/smart-collect/tasks/${taskId}/events/${eventId}/clues/${clueId}`),
+  deleteEvent: (taskId, eventId) =>
+    client.delete(`/smart-collect/tasks/${taskId}/events/${eventId}`),
+  prepareEventContent: (taskId, eventId) =>
+    client.post(`/smart-collect/tasks/${taskId}/events/${eventId}/prepare-content`, null, {
+      timeout: 60000,
+    }),
+  getEventEvidence: (taskId, eventId) =>
+    client.get(`/smart-collect/tasks/${taskId}/events/${eventId}/evidence`),
+  synthesizeEvent: (taskId, eventId) =>
+    client.post(`/smart-collect/tasks/${taskId}/events/${eventId}/synthesize`, null, {
+      timeout: 120000,
+    }),
+  listEventSyntheses: (taskId, eventId) =>
+    client.get(`/smart-collect/tasks/${taskId}/events/${eventId}/syntheses`),
+  getEventSynthesis: (taskId, eventId, synthesisId) =>
+    client.get(`/smart-collect/tasks/${taskId}/events/${eventId}/syntheses/${synthesisId}`),
+  approveEventSynthesis: (taskId, eventId, synthesisId) =>
+    client.post(
+      `/smart-collect/tasks/${taskId}/events/${eventId}/syntheses/${synthesisId}/approve`,
+    ),
+  rejectEventSynthesis: (taskId, eventId, synthesisId) =>
+    client.post(
+      `/smart-collect/tasks/${taskId}/events/${eventId}/syntheses/${synthesisId}/reject`,
+    ),
+  createArticleFromSynthesis: (taskId, eventId, synthesisId) =>
+    client.post(
+      `/smart-collect/tasks/${taskId}/events/${eventId}/syntheses/${synthesisId}/create-article`,
+    ),
+  getClueContent: (clueId) => client.get(`/smart-collect/clues/${clueId}/content`),
+  evaluationSummary: () => client.get('/smart-collect/evaluation/summary'),
+  evaluationOutliers: (params) => client.get('/smart-collect/evaluation/outliers', { params }),
 }

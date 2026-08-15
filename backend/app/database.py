@@ -151,6 +151,101 @@ def ensure_schema_compat() -> None:
             )
             print("已迁移：resources.storage 新增成功")
 
+    # 智能采编：老库兼容语义相关度与人工标签字段（新库由create_all直接创建）
+    with engine.begin() as conn:
+        semantic_score_column = conn.execute(
+            text(
+                "SELECT 1 FROM information_schema.COLUMNS "
+                "WHERE TABLE_SCHEMA = DATABASE() "
+                "AND TABLE_NAME = 'smart_collect_task_clues' "
+                "AND COLUMN_NAME = 'semantic_score'"
+            )
+        ).first()
+        if not semantic_score_column:
+            conn.execute(
+                text(
+                    "ALTER TABLE smart_collect_task_clues "
+                    "ADD COLUMN semantic_score FLOAT NULL "
+                    "COMMENT '该新闻相对于本次采编主题的语义相关度' "
+                    "AFTER search_score"
+                )
+            )
+            print("已迁移：smart_collect_task_clues.semantic_score 允许为空")
+
+        relevance_label_column = conn.execute(
+            text(
+                "SELECT 1 FROM information_schema.COLUMNS "
+                "WHERE TABLE_SCHEMA = DATABASE() "
+                "AND TABLE_NAME = 'smart_collect_task_clues' "
+                "AND COLUMN_NAME = 'relevance_label'"
+            )
+        ).first()
+        if not relevance_label_column:
+            conn.execute(
+                text(
+                    "ALTER TABLE smart_collect_task_clues "
+                    "ADD COLUMN relevance_label SMALLINT NULL "
+                    "COMMENT '人工相关性：0明显偏题，1一般相关，2明显相关，NULL未标注' "
+                    "AFTER semantic_score"
+                )
+            )
+            print("已迁移：smart_collect_task_clues.relevance_label 允许为空")
+
+        # 新库由create_all直接创建事件表；这里兼容可能已存在但缺少业务唯一索引的表。
+        event_clue_table = conn.execute(
+            text(
+                "SELECT 1 FROM information_schema.TABLES "
+                "WHERE TABLE_SCHEMA = DATABASE() "
+                "AND TABLE_NAME = 'smart_collect_event_clues'"
+            )
+        ).first()
+        if event_clue_table:
+            task_clue_unique = conn.execute(
+                text(
+                    "SELECT 1 FROM information_schema.STATISTICS "
+                    "WHERE TABLE_SCHEMA = DATABASE() "
+                    "AND TABLE_NAME = 'smart_collect_event_clues' "
+                    "AND INDEX_NAME = 'uq_smart_collect_event_clues_task_clue' "
+                    "AND NON_UNIQUE = 0"
+                )
+            ).first()
+            if not task_clue_unique:
+                conn.execute(
+                    text(
+                        "ALTER TABLE smart_collect_event_clues "
+                        "ADD UNIQUE INDEX uq_smart_collect_event_clues_task_clue "
+                        "(task_id, clue_id)"
+                    )
+                )
+                print("已迁移：同一采编任务的一条线索最多属于一个人工事件")
+
+        content_table = conn.execute(
+            text(
+                "SELECT 1 FROM information_schema.TABLES "
+                "WHERE TABLE_SCHEMA = DATABASE() "
+                "AND TABLE_NAME = 'news_clue_contents'"
+            )
+        ).first()
+        if content_table:
+            content_clue_unique = conn.execute(
+                text(
+                    "SELECT 1 FROM information_schema.STATISTICS "
+                    "WHERE TABLE_SCHEMA = DATABASE() "
+                    "AND TABLE_NAME = 'news_clue_contents' "
+                    "AND INDEX_NAME = 'uq_news_clue_contents_clue_id' "
+                    "AND NON_UNIQUE = 0"
+                )
+            ).first()
+            if not content_clue_unique:
+                conn.execute(
+                    text(
+                        "ALTER TABLE news_clue_contents "
+                        "ADD UNIQUE INDEX uq_news_clue_contents_clue_id (clue_id)"
+                    )
+                )
+                print("已迁移：每条新闻线索最多保存一份可复用正文")
+
+
 def get_db():
     """FastAPI 依赖：每个请求一个数据库会话，请求结束自动关闭"""
     db = SessionLocal()

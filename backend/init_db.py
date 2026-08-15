@@ -9,7 +9,7 @@ from app.database import Base, engine, SessionLocal, ensure_database, ensure_sch
 from app.models import (  # noqa: F401
     user, category, channel, article, article_embedding, review, resource, portal, event, interaction,
     anonymous_action, system_setting, dify_workflow, view_history, ai_call, ai_task,
-    ai_correction, comment, checkin,
+    ai_correction, comment, checkin, smart_collect,
 )
 from app.core.security import hash_password
 from app.models.user import User

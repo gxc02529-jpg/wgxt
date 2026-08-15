@@ -9,8 +9,13 @@
 - model_version 区分嵌入模型/文本配方版本，换模型时 bump 版本全量重算即可，表结构不变
 """
 import hashlib
+import math
 import struct
 from datetime import datetime
+from functools import lru_cache
+from pathlib import Path
+from threading import Lock
+from typing import Callable, Protocol, Sequence
 
 from sqlalchemy import func
 from sqlalchemy.orm import Session
@@ -210,3 +215,212 @@ def delete_embedding(db: Session, article_id: int) -> bool:
         .delete()
     )
     return deleted > 0
+
+
+# ---------------- 智能采编：本地文本语义相关度服务 ----------------
+
+
+def _resolve_embedding_model_path(model_name: str) -> str:
+    """把 backend/ 开头的项目相对路径解析为绝对路径，Hugging Face 模型名保持不变。"""
+    from ..config import PROJECT_ROOT
+
+    candidate = Path(model_name)
+    if candidate.is_absolute() or candidate.parts[0] != "backend":
+        return model_name
+    return str(PROJECT_ROOT / candidate)
+
+
+# 默认加载项目内置的本地模型，避免首次推理时从 Hugging Face 下载
+DEFAULT_EMBEDDING_MODEL = "backend/app/multilingual-e5-small"
+SUPPORTED_EMBEDDING_DEVICES = frozenset({"auto", "cuda", "cpu"})
+
+
+class EmbeddingServiceError(Exception):
+    """可安全返回给前端的本地语义计算异常。"""
+
+    status_code = 503
+    message = "语义相关度计算暂时不可用，请稍后重试"
+
+
+class EmbeddingScorer(Protocol):
+    """采编服务依赖的最小接口，测试可注入不加载真实模型的实现。"""
+
+    def score_batch(self, topic: str, clue_texts: Sequence[str]) -> list[float]:
+        """返回与新闻文本顺序一一对应的语义相关度。"""
+
+
+class PassageEmbedder(Protocol):
+    """新闻间相似度服务依赖的最小批量向量接口。"""
+
+    def embed_passages(self, clue_texts: Sequence[str]) -> list[list[float]]:
+        """一次返回全部新闻的归一化passage向量。"""
+
+
+class EmbeddingService:
+    """真实模型实现；构造实例不会导入依赖或下载模型。"""
+
+    def __init__(
+        self,
+        model_name: str = DEFAULT_EMBEDDING_MODEL,
+        device: str = "auto",
+        model_loader: Callable[[str], object] | None = None,
+    ):
+        self.model_name = _resolve_embedding_model_path(model_name)
+        self.requested_device = device.strip().lower()
+        if self.requested_device not in SUPPORTED_EMBEDDING_DEVICES:
+            raise ValueError("EMBEDDING_DEVICE 只支持 auto、cuda 或 cpu")
+        self._model_loader = model_loader
+        self._model = None
+        self._resolved_device: str | None = None
+        self._model_lock = Lock()
+        self._inference_lock = Lock()
+
+    @property
+    def device(self) -> str | None:
+        """返回真实模型当前设备；首次加载前为None。"""
+        return self._resolved_device
+
+    def _resolve_device(self) -> str:
+        """按配置选择推理设备；auto优先CUDA，不可用时安全回退CPU。"""
+        if self.requested_device == "cpu":
+            return "cpu"
+
+        try:
+            import torch
+        except Exception as exc:
+            raise EmbeddingServiceError from exc
+
+        cuda_available = torch.cuda.is_available()
+        if self.requested_device == "cuda" and not cuda_available:
+            raise EmbeddingServiceError
+        return "cuda" if cuda_available else "cpu"
+
+    def _load_model(self):
+        """首次推理时才加载模型，同一进程内只加载一次。"""
+        if self._model is not None:
+            return self._model
+
+        with self._model_lock:
+            if self._model is not None:
+                return self._model
+            try:
+                resolved_device = self._resolve_device()
+                if self._model_loader is not None:
+                    model = self._model_loader(self.model_name)
+                else:
+                    # 延迟导入确保未安装真实模型依赖时，应用和Fake测试仍可启动。
+                    from sentence_transformers import SentenceTransformer
+
+                    model = SentenceTransformer(self.model_name, device=resolved_device)
+            except Exception as exc:
+                raise EmbeddingServiceError from exc
+            self._resolved_device = resolved_device
+            self._model = model
+            return self._model
+
+    @staticmethod
+    def _cosine_similarity(left, right) -> float:
+        """计算两个向量的余弦相似度，不依赖向量数据库。"""
+        left_values = [float(value) for value in left]
+        right_values = [float(value) for value in right]
+        if len(left_values) != len(right_values) or not left_values:
+            raise EmbeddingServiceError
+
+        dot_product = sum(a * b for a, b in zip(left_values, right_values))
+        left_norm = math.sqrt(sum(value * value for value in left_values))
+        right_norm = math.sqrt(sum(value * value for value in right_values))
+        if left_norm == 0 or right_norm == 0:
+            raise EmbeddingServiceError
+
+        score = dot_product / (left_norm * right_norm)
+        if not math.isfinite(score):
+            raise EmbeddingServiceError
+        # 浮点计算可能产生极小的越界误差，数据库仍保存标准余弦范围。
+        return max(-1.0, min(1.0, score))
+
+    def score_batch(self, topic: str, clue_texts: Sequence[str]) -> list[float]:
+        """一次批量计算主题与多条新闻的语义相关度。"""
+        clean_topic = topic.strip() if isinstance(topic, str) else ""
+        clean_clue_texts = [text.strip() if isinstance(text, str) else "" for text in clue_texts]
+        if not clean_topic or any(not text for text in clean_clue_texts):
+            raise EmbeddingServiceError
+        if not clean_clue_texts:
+            return []
+
+        query_text = f"query: {clean_topic}"
+        passage_texts = [f"passage: {text}" for text in clean_clue_texts]
+
+        try:
+            model = self._load_model()
+            # 单次encode包含一个主题和本批全部新闻，不为每条新闻单独启动线程。
+            with self._inference_lock:
+                embeddings = model.encode(
+                    [query_text, *passage_texts],
+                    batch_size=min(32, len(passage_texts) + 1),
+                    convert_to_numpy=True,
+                    normalize_embeddings=True,
+                    show_progress_bar=False,
+                )
+            if len(embeddings) != len(passage_texts) + 1:
+                raise EmbeddingServiceError
+            return [
+                self._cosine_similarity(embeddings[0], passage_embedding)
+                for passage_embedding in embeddings[1:]
+            ]
+        except EmbeddingServiceError:
+            raise
+        except Exception as exc:
+            raise EmbeddingServiceError from exc
+
+    def embed_passages(self, clue_texts: Sequence[str]) -> list[list[float]]:
+        """一次批量生成新闻passage向量，供新闻之间点积计算使用。"""
+        clean_clue_texts = [
+            text.strip() if isinstance(text, str) else ""
+            for text in clue_texts
+        ]
+        if any(not text for text in clean_clue_texts):
+            raise EmbeddingServiceError
+        if not clean_clue_texts:
+            return []
+
+        passage_texts = [f"passage: {text}" for text in clean_clue_texts]
+        try:
+            model = self._load_model()
+            with self._inference_lock:
+                embeddings = model.encode(
+                    passage_texts,
+                    batch_size=min(32, len(passage_texts)),
+                    convert_to_numpy=True,
+                    normalize_embeddings=True,
+                    show_progress_bar=False,
+                )
+            if len(embeddings) != len(passage_texts):
+                raise EmbeddingServiceError
+
+            vectors: list[list[float]] = []
+            dimension: int | None = None
+            for embedding in embeddings:
+                values = [float(value) for value in embedding]
+                if not values or any(not math.isfinite(value) for value in values):
+                    raise EmbeddingServiceError
+                if dimension is None:
+                    dimension = len(values)
+                elif len(values) != dimension:
+                    raise EmbeddingServiceError
+                vectors.append(values)
+            return vectors
+        except EmbeddingServiceError:
+            raise
+        except Exception as exc:
+            raise EmbeddingServiceError from exc
+
+
+@lru_cache(maxsize=1)
+def get_embedding_service() -> EmbeddingService:
+    """返回进程级单例；模型本身仍在第一次真实推理时懒加载。"""
+    from ..config import settings
+
+    return EmbeddingService(
+        model_name=settings.EMBEDDING_MODEL_NAME,
+        device=settings.EMBEDDING_DEVICE,
+    )

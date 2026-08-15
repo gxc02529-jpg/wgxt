@@ -12,6 +12,7 @@ from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
+from ..config import settings
 from ..core.deps import get_current_user, get_optional_user, require_roles
 from ..core.pagination import paginate
 from ..database import get_db
@@ -22,10 +23,30 @@ from ..models.review import ArticleReview
 from ..models.user import User
 from ..models.view_history import ViewHistory
 from ..schemas.article import ArticleIn
+from ..schemas.article_writing import ArticleWritingResponse
 from ..services import embedding_service
 from ..services.article_import_service import import_excel
+from ..services.llm_provider import OpenAICompatibleLLMProvider
 from ..services.recommendation_service import recommend_articles
 from ..services.settings_service import get_setting
+from ..services.smart_collect_article_service import SmartCollectArticleService
+from ..services.smart_collect_article_writing_service import (
+    SmartCollectArticleWritingConfigError,
+    SmartCollectArticleWritingDataError,
+    SmartCollectArticleWritingEmptyResponseError,
+    SmartCollectArticleWritingError,
+    SmartCollectArticleWritingJsonError,
+    SmartCollectArticleWritingModelError,
+    SmartCollectArticleWritingNotFoundError,
+    SmartCollectArticleWritingPermissionError,
+    SmartCollectArticleWritingSafetyError,
+    SmartCollectArticleWritingSchemaError,
+    SmartCollectArticleWritingService,
+    SmartCollectArticleWritingStatusError,
+    SmartCollectArticleWritingSynthesisStatusError,
+    SmartCollectArticleWritingTimeoutError,
+    SmartCollectArticleWritingUnsupportedError,
+)
 from ..services.text_utils import strip_html
 
 router = APIRouter(prefix="/articles", tags=["文稿"])
@@ -53,6 +74,51 @@ def _can_manage(article: Article, user: User) -> bool:
     if user is None:
         return False
     return user.role == "admin" or article.author_id == user.id
+
+
+def get_article_writing_llm_provider() -> OpenAICompatibleLLMProvider:
+    """复用现有OpenAI兼容LLMProvider；测试可在任何模型调用前注入Fake。"""
+    return OpenAICompatibleLLMProvider(
+        api_key=settings.LLM_API_KEY,
+        base_url=settings.LLM_BASE_URL,
+        model=settings.LLM_MODEL,
+        timeout=settings.LLM_TIMEOUT,
+    )
+
+
+def _raise_article_writing_http_error(exc: Exception) -> None:
+    """只向编辑返回稳定业务提示，不泄露供应商响应或密钥。"""
+    if isinstance(exc, SmartCollectArticleWritingNotFoundError):
+        raise HTTPException(404, exc.message) from None
+    if isinstance(exc, SmartCollectArticleWritingPermissionError):
+        raise HTTPException(403, exc.message) from None
+    if isinstance(
+        exc,
+        (
+            SmartCollectArticleWritingStatusError,
+            SmartCollectArticleWritingUnsupportedError,
+            SmartCollectArticleWritingSynthesisStatusError,
+        ),
+    ):
+        raise HTTPException(409, exc.message) from None
+    if isinstance(exc, SmartCollectArticleWritingConfigError):
+        raise HTTPException(503, exc.message) from None
+    if isinstance(exc, SmartCollectArticleWritingTimeoutError):
+        raise HTTPException(504, exc.message) from None
+    if isinstance(exc, SmartCollectArticleWritingDataError):
+        raise HTTPException(500, exc.message) from None
+    if isinstance(
+        exc,
+        (
+            SmartCollectArticleWritingEmptyResponseError,
+            SmartCollectArticleWritingJsonError,
+            SmartCollectArticleWritingSchemaError,
+            SmartCollectArticleWritingModelError,
+            SmartCollectArticleWritingSafetyError,
+        ),
+    ):
+        raise HTTPException(502, exc.message) from None
+    raise HTTPException(502, SmartCollectArticleWritingError.message) from None
 
 
 def _apply_categories(db: Session, article: Article, category_ids: list[int]):
@@ -197,6 +263,24 @@ def user_recommend_articles(
     return {"items": [a.to_dict() for a in items], "total": len(items)}
 
 
+@router.post(
+    "/{article_id}/ai-writing",
+    response_model=ArticleWritingResponse,
+    summary="根据关联的已确认事实生成文稿写作建议",
+)
+async def generate_article_writing_suggestion(
+    article_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_roles("editor", "admin")),
+):
+    """只返回预览建议；不保存Article、不修改Synthesis、不触发审核。"""
+    service = SmartCollectArticleWritingService(get_article_writing_llm_provider())
+    try:
+        return await service.generate(db, article_id, user)
+    except SmartCollectArticleWritingError as exc:
+        _raise_article_writing_http_error(exc)
+
+
 @router.get("/{article_id}", summary="文稿详情（未发布稿仅作者/系统管理员/审核管理员可见）")
 def get_article(article_id: int, db: Session = Depends(get_db), user: User | None = Depends(get_optional_user)):
     article = db.get(Article, article_id)
@@ -217,7 +301,14 @@ def get_article(article_id: int, db: Session = Depends(get_db), user: User | Non
         else:
             db.add(ViewHistory(user_id=user.id, article_id=article.id, viewed_at=datetime.now()))
         db.commit()
-    return article.to_dict(include_content=True, include_reviews=_can_manage(article, user))
+    can_manage = _can_manage(article, user)
+    data = article.to_dict(include_content=True, include_reviews=can_manage)
+    if can_manage:
+        data["smart_collect"] = SmartCollectArticleService.get_editorial_context(
+            db,
+            article,
+        )
+    return data
 
 
 @router.get("/{article_id}/related", summary="相关推荐（同栏目已发布文稿，按发布时间新到旧）")

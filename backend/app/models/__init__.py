@@ -19,6 +19,16 @@ from .ai_task import AITask
 from .ai_correction import AICorrection
 from .comment import Comment
 from .checkin import CheckinLog
+from .smart_collect import (
+    NewsClue,
+    NewsClueContent,
+    SmartCollectArticleSource,
+    SmartCollectEvent,
+    SmartCollectEventClue,
+    SmartCollectEventSynthesis,
+    SmartCollectTask,
+    SmartCollectTaskClue,
+)
 
 __all__ = [
     "User", "Category", "Article", "article_categories", "ArticleReview",
@@ -26,4 +36,7 @@ __all__ = [
     "Resource", "PortalModule", "EventLog", "UserAction", "AnonymousAction",
     "SystemSetting", "DifyWorkflow", "ViewHistory", "AICallLog", "AITask", "AICorrection",
     "Comment", "CheckinLog", "ArticleEmbedding",
+    "SmartCollectTask", "NewsClue", "NewsClueContent", "SmartCollectTaskClue",
+    "SmartCollectArticleSource", "SmartCollectEvent", "SmartCollectEventClue",
+    "SmartCollectEventSynthesis",
 ]

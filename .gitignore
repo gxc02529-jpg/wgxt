@@ -26,3 +26,4 @@ backend/uploads/
 # 模型权重文件（体积大，不入库；由开发者本地放置或共享盘同步）
 backend/app/aiVectorizationModel/model/vectorization-model/model.safetensors
 backend/app/aimodel/model/bert_model.pt
+backend/app/multilingual-e5-small/model.safetensors

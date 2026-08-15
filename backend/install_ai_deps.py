@@ -9,7 +9,8 @@
       （默认 cu124，可通过 --cuda 参数调整，如 --cuda cu121）
     - 未检测到 GPU：从 PyTorch 官方 CPU 索引安装 CPU 版 torch
       （体积小、无 CUDA 依赖，普通电脑也能跑，只是推理较慢）
-    - transformers 与设备无关，两种场景统一安装最新版
+    - transformers 与设备无关，两种场景统一安装最新版；
+      同时安装 sentence-transformers，用于智能采编本地语义相关度
 
 用法（在 backend 目录执行）：
     python install_ai_deps.py            # 自动检测 GPU 并安装
@@ -94,7 +95,7 @@ def main() -> int:
     if dry_run:
         index = cuda_index if gpu else CPU_INDEX
         print(f"[install-ai] [dry-run] 计划执行: pip install torch --index-url {index}")
-        print("[install-ai] [dry-run] 计划执行: pip install transformers")
+        print("[install-ai] [dry-run] 计划执行: pip install transformers sentence-transformers")
         print("[install-ai] [dry-run] 结束（未安装任何包）")
         return 0
 
@@ -106,9 +107,9 @@ def main() -> int:
             print("[install-ai] torch 安装失败，请检查网络（PyTorch 官方源）后重试")
             return 1
 
-    # transformers：设备无关，统一安装
-    if not pip_install(["transformers"]):
-        print("[install-ai] transformers 安装失败，请检查网络后重试")
+    # transformers / sentence-transformers：设备无关，统一安装
+    if not pip_install(["transformers", "sentence-transformers==5.6.1"]):
+        print("[install-ai] transformers/sentence-transformers 安装失败，请检查网络后重试")
         return 1
 
     print("[install-ai] AI 依赖安装完成。可运行 python -c \"import torch; print(torch.cuda.is_available())\" 验证。")

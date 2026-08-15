@@ -58,6 +58,13 @@ class Article(Base):
         order_by="ArticleReview.id",
         passive_deletes=True,
     )
+    smart_collect_source = relationship(
+        "SmartCollectArticleSource",
+        primaryjoin="Article.id == foreign(SmartCollectArticleSource.article_id)",
+        back_populates="article",
+        cascade="all, delete-orphan",
+        uselist=False,
+    )
 
     def to_dict(self, include_content: bool = False, include_reviews: bool = False) -> dict:
         """序列化为字典；正文与审核记录默认不返回（列表场景更轻量）"""
