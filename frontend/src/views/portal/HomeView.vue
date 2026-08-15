@@ -203,12 +203,16 @@ onMounted(async () => {
   position: relative;
   display: block;
   height: 100%;
+  /* contain 模式图片四周可能留白，用主题次级背景填充，避免留白刺眼 */
+  background: var(--color-paper-2);
 }
 
 .lead__slide img {
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  /* contain：完整显示图片、不裁切，解决封面图只显示局部的问题；
+     若想恢复通栏铺满裁切效果可改回 cover */
+  object-fit: contain;
 }
 
 .lead__mask {

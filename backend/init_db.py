@@ -141,10 +141,12 @@ def seed():
             db.add(SystemSetting(
                 config_key="ai_knowledge_base",
                 config_value=json.dumps({
-                    "斯塔默": {"title": "英国首相", "category": "政治"},
-                    "米莱": {"title": "阿根廷总统", "category": "政治"},
-                    "元勋": {"title": "阿根廷总统", "category": "政治"},
-                    "泰勒·斯威夫特": {"title": "歌手", "category": "娱乐"},
+                            "斯塔默": {"title": "英国首相", "category": "政治"},
+                            "米莱": {"title": "阿根廷总统", "category": "政治"},
+                            "元勋": {"title": "两弹元勋", "category": "政治"},
+                            "普京": {"title": "普京", "category": "政治"},
+                            "高市早苗": {"title": "高市早苗", "category": "政治"},
+                            "泰勒·斯威夫特": {"title": "歌手", "category": "娱乐"}
                 }, ensure_ascii=False),
                 value_type="json",
                 description="AI 知识库（关键词→分类强兜底）：JSON 对象，键为关键词，值为 {title, category}",

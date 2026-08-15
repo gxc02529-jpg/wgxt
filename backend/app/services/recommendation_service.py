@@ -5,10 +5,11 @@
     ① 离线冷数据：全部文稿已由 embedding_service 向量化写入 article_embeddings 表。
         本模块首次调用时惰性全量载入进程内存，之后按 source_hash 增量同步——
         新写/编辑的文稿向量化后无需重启进程即可被召回。
-    ② 在线召回：登录且观看历史 >= 20 篇时，取最近 20 篇观看文稿，用与入库相同的
-        向量模型（BAAI_bge-small-zh）和文本规则（"分类1,分类2：标题"）逐篇向量化，
-        按观看时长加权平均得到用户向量（L2 归一化），再与内存中全部已发布文稿向量
-        做点积（双方归一化后点积即余弦相似度），KNN 取 top-50。
+    ② 在线召回：登录且观看历史 >= 20 篇时，取最近 20 篇观看文稿，
+        优先从进程内存缓存读取它们的已入库向量（避免重复调用模型），
+        仅缓存缺失时才现场向量化并回填；按观看时长加权平均得到用户向量
+        （L2 归一化），再与内存中全部已发布文稿向量做点积
+        （双方归一化后点积即余弦相似度），KNN 取 top-50。
     ③ 在线精排：_rerank() 目前原样透传 top-50，后续在此接入排序模型
         （特征工程 → 模型打分 → 重排）。
     ④ 兜底：过滤已观看与不感兴趣后，候选不足 limit 时按热度榜补齐，
@@ -21,10 +22,11 @@
 
 设计要点：
     - 每次请求对相似度/热度做随机扰动，保证不同用户、不同请求结果尽量不同；
+    - 用户向量优先读内存缓存，缓存缺失的文稿才调模型向量化，并回填表与缓存；
     - 向量模型模块级单例常驻内存，首次调用加载较慢，之后秒级推理；
     - 向量化/模型加载异常自动回退通用推荐，不阻断接口；
-    - 所有 *_preference/_excluded 等辅助函数只读数据库，无副作用、无 commit，
-      可在任意请求会话中安全复用。
+    - 除 _compute_user_vector（可能回填缺失向量，幂等 upsert）外，
+      其余辅助函数只读数据库、无副作用，可在任意请求会话中安全复用。
 """
 import math
 import random
@@ -41,7 +43,7 @@ from ..models.article_embedding import ArticleEmbedding
 from ..models.interaction import UserAction
 from ..models.user import User
 from ..models.view_history import ViewHistory
-from .embedding_service import build_article_text
+from .embedding_service import MODEL_VERSION, build_article_text, hash_source_text, upsert_embedding
 
 
 # ---------- 常量 ----------
@@ -177,24 +179,30 @@ def _user_excluded_ids(db: Session, user: User) -> set[int]:
 
 
 def _compute_user_vector(db: Session, user: User) -> np.ndarray | None:
-    """计算用户兴趣向量（最近 20 条观看记录 → 逐篇向量化 → 加权平均 → L2 归一化）
+    """计算用户兴趣向量（最近 20 条观看记录 → 读缓存/补算向量 → 加权平均 → L2 归一化）
 
     算法步骤：
     1. 按 viewed_at 倒序取最近 MIN_HISTORY_FOR_VECTOR（20）条观看历史；
-    2. 逐篇用 build_article_text 生成与入库完全一致的向量化文本（"分类1,分类2：标题"）；
-    3. 调用同一个向量模型（aiVectorizationModel.predict_fun，BAAI_bge-small-zh，
-       512 维，输出已 L2 归一化）批量向量化；
+    2. 优先从进程内存缓存（_EMBEDDING_CACHE）直接读取这 20 篇文稿的已入库向量——
+       正常情况下全部命中，全程不调用向量模型，几乎零额外开销；
+    3. 缓存缺失的文稿（如当时向量化失败/未入库）才现场用同一个向量模型
+       （aiVectorizationModel.predict_fun，BAAI_bge-small-zh，512 维，输出已
+       L2 归一化）与同一文本规则（build_article_text："分类1,分类2：标题"）
+       向量化，并回填 article_embeddings 表与内存缓存（幂等 upsert），
+       下次请求直接命中缓存，避免重复计算；
     4. 按观看时长加权平均（权重 = 1 + watch_seconds/600，看得越久越重要），
        再做一次 L2 归一化，保证与文稿向量同处单位超球面，点积即余弦相似度。
 
     返回：
     - np.ndarray(512,)：用户兴趣向量；
-    - None：观看历史不足 20 条（调用方应回退通用推荐）。
+    - None：观看历史不足 20 条，或 20 篇文稿均无法获得向量（调用方回退通用推荐）。
 
     扩展点：
     - 若想用注意力池化替代加权平均，可将 weights 替换为 attention 分数
       （如观看时长/时间衰减经过 softmax），其余流程不变。
     - 模型加载失败/向量化异常由调用方（_recommend_by_vector）兜底回退通用推荐。
+    - 注意：本函数可能写库（回填缺失向量），是服务内唯一有写操作、会 commit
+      的函数；回填数据为幂等派生数据，不影响业务表。
     """
     history = (
         db.query(ViewHistory)
@@ -213,22 +221,55 @@ def _compute_user_vector(db: Session, user: User) -> np.ndarray | None:
         .filter(Article.id.in_(ids))
         .all()
     )
-    by_id = {a.id: a for a in articles}
 
-    texts: list[str] = []
+    # 生成每篇的向量化文本（与入库文本规则一致），供缓存缺失时补算使用
+    texts_by_id = {a.id: build_article_text(a) for a in articles}
+
+    vectors: list[np.ndarray] = []
     weights: list[float] = []
+    missing: list[tuple[int, float]] = []  # 缓存缺失的 (article_id, 观看权重)
     for h in history:
-        article = by_id.get(h.article_id)
-        if article is None:
-            continue
-        texts.append(build_article_text(article))
         # 观看时长加权：看得越久权重越高（正常 1~4 倍）
-        weights.append(1.0 + (h.watch_seconds or 0) / WATCH_SECONDS_NORM)
-    if not texts:
+        weight = 1.0 + (h.watch_seconds or 0) / WATCH_SECONDS_NORM
+        cache_item = _EMBEDDING_CACHE.get(h.article_id)
+        if cache_item is not None:
+            # 命中内存缓存：直接复用已入库向量，不重复调用模型
+            vectors.append(cache_item["vector"])
+            weights.append(weight)
+        else:
+            missing.append((h.article_id, weight))
+
+    # 缓存缺失的文稿：现场向量化并回填表与缓存（正常情况下历史文稿均已向量化，
+    # 该分支只在向量化曾失败的文稿上触发；by_id 缺文章时该篇直接跳过）
+    pending = [(aid, w) for aid, w in missing if aid in texts_by_id]
+    if pending:
+        from ..aiVectorizationModel.predict import predict_fun  # 惰性导入：首次调用才加载模型
+        new_vectors = predict_fun([texts_by_id[aid] for aid, _ in pending])
+        with _EMBEDDING_CACHE_LOCK:
+            for (aid, _w), vector in zip(pending, new_vectors):
+                source_hash = hash_source_text(texts_by_id[aid])
+                _EMBEDDING_CACHE[aid] = {
+                    "hash": source_hash,
+                    "vector": np.asarray(vector, dtype="<f4").copy(),
+                }
+        # 回填 article_embeddings 表（幂等 upsert），避免下次 sync 清理缓存后重复补算
+        for (aid, _w), vector in zip(pending, new_vectors):
+            upsert_embedding(
+                db,
+                aid,
+                vector,
+                MODEL_VERSION,
+                hash_source_text(texts_by_id[aid]),
+            )
+        db.commit()
+        for aid, weight in pending:
+            vectors.append(_EMBEDDING_CACHE[aid]["vector"])
+            weights.append(weight)
+
+    if not vectors:
         return None
 
-    from ..aiVectorizationModel.predict import predict_fun  # 惰性导入：首次调用才加载模型
-    vectors = predict_fun(texts)  # (N, 512)，模型已 L2 归一化
+    # 加权平均后重新 L2 归一化（缓存向量已归一化，平均后需再归一化保持余弦语义）
     user_vec = np.average(vectors, axis=0, weights=weights)
     norm = np.linalg.norm(user_vec)
     return user_vec / norm if norm > 0 else None
@@ -246,7 +287,8 @@ def _knn_recall(db: Session, user_vec: np.ndarray, k: int) -> list[int]:
     输出：按相似度降序的文稿 id 列表（含随机扰动），最多 k 个。
 
     实现说明：
-    1. 先同步向量缓存（_sync_embedding_cache，冷加载或增量更新）；
+    1. 向量缓存已由 _recommend_by_vector 主流程同步（冷加载或增量更新），
+       本函数直接复用 _EMBEDDING_CACHE，不再重复同步；
     2. 只对 status = "published" 的文稿计算相似度（缓存含全部文稿，这里过滤）；
     3. 内存矩阵点积：双方均 L2 归一化，点积即余弦相似度，向量化一次算完；
     4. 相似度乘 0.9~1.1 随机扰动，使每次召回集边缘与顺序略有不同；
@@ -255,7 +297,6 @@ def _knn_recall(db: Session, user_vec: np.ndarray, k: int) -> list[int]:
     边界：若没有任何已发布文稿向量（如尚未跑全量向量化），返回空列表，
     由 _recommend_by_vector 的热门兜底补齐。
     """
-    _sync_embedding_cache(db)
     published_ids = [
         row[0]
         for row in db.query(Article.id).filter(Article.status == "published").all()
@@ -327,10 +368,13 @@ def _recommend_by_vector(db: Session, user: User, limit: int) -> list[Article]:
     """向量召回推荐主流程：用户向量 → KNN top-50 → 精排（预留）→ 过滤 → 兜底。
 
     执行顺序对应四段式：
-    ① 用户向量：_compute_user_vector（历史不足 20 条返回 None，回退通用推荐）；
-    ② 召回：_knn_recall 取 top-50（含相似度随机扰动）；
-    ③ 精排：_rerank（当前透传，后续接排序模型）；
-    ④ 兜底：_user_excluded_ids 过滤已观看/不感兴趣 → 不足 limit 时
+    ① 缓存准备：先 _sync_embedding_cache 校验进程内存是否有全量文稿向量——
+       无则从 article_embeddings 冷加载，有则按 source_hash 增量同步；
+    ② 用户向量：_compute_user_vector 优先读缓存（缺失才补算回填），
+       历史不足 20 条返回 None，回退通用推荐；
+    ③ 召回：_knn_recall 取 top-50（含相似度随机扰动）；
+    ④ 精排：_rerank（当前透传，后续接排序模型）；
+    ⑤ 兜底：_user_excluded_ids 过滤已观看/不感兴趣 → 不足 limit 时
        _fill_by_hot 热门补齐 → 截取前 limit 篇 → 按序回查 Article 返回。
 
     异常兜底：用户向量计算抛异常（模型加载失败等）时打印告警并回退通用推荐，
@@ -338,6 +382,8 @@ def _recommend_by_vector(db: Session, user: User, limit: int) -> list[Article]:
 
     返回：最多 limit 篇已发布 Article 对象（顺序即最终展示顺序）。
     """
+    # 进入向量链路先保证内存缓存就绪：无则全量载入，有则增量同步
+    _sync_embedding_cache(db)
     try:
         user_vec = _compute_user_vector(db, user)
     except Exception as e:
