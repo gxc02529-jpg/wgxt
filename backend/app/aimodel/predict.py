@@ -75,7 +75,9 @@ class BertLinear(nn.Module):
 tokenizer = BertTokenizer.from_pretrained(config.model_file_path)  # 加载BERT向量化器
 # 1 加载保存的模型
 model = BertLinear()  # 或者你的模型类
-model.load_state_dict(torch.load(config.model_path, weights_only=True))
+# map_location=device：权重文件在 GPU 机器上保存（cuda 张量），
+# 无 GPU 机器加载时自动映射到 CPU，否则 torch.load 会直接报错
+model.load_state_dict(torch.load(config.model_path, weights_only=True, map_location=device))
 model = model.eval().to(device)
 
 # dataloader会自己用textDataset拿数据 然后传给这个函数进行格式转化

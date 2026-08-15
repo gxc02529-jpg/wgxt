@@ -50,6 +50,7 @@ wengaofabu/
 ```bash
 cd backend
 python -m pip install -r requirements.txt
+python install_ai_deps.py    # 安装 AI 依赖（torch/transformers），自动检测 GPU，无 GPU 自动装 CPU 版
 python init_db.py        # 自动建库（若不存在）+ 建表 + 兼容迁移 + 种子账号/栏目/系统配置，幂等可重复执行
 python run.py            # 启动 http://localhost:8000，接口文档 /docs
 ```
@@ -68,6 +69,74 @@ npm run dev              # 启动 http://localhost:5173
 ```
 
 开发模式下前端通过 Vite 代理访问后端，无需额外配置跨域。
+
+## AI 依赖安装（torch / transformers）
+
+`requirements.txt` 只包含 FastAPI 等基础依赖，**不含 torch / transformers**——
+这两个库体积大且区分 GPU / CPU 版本，由 `install_ai_deps.py` 按机器环境自动选择安装。
+
+### 自动安装（推荐）
+
+```bash
+cd backend
+python install_ai_deps.py
+```
+
+脚本会先检测本机是否有 NVIDIA GPU：
+
+- **有 GPU**：从 PyTorch 官方 CUDA 索引安装 GPU 版 torch（默认 `cu124`），推理快；
+- **无 GPU**：从 PyTorch 官方 CPU 索引安装 CPU 版 torch，体积小、无需 CUDA 驱动，
+  普通电脑也能正常运行（模型推理稍慢，但功能完整）。
+
+常用参数：
+
+```bash
+python install_ai_deps.py --cpu            # 强制安装 CPU 版
+python install_ai_deps.py --gpu            # 强制安装 GPU 版
+python install_ai_deps.py --cuda cu121     # 指定 CUDA 版本（仅 GPU 场景）
+python install_ai_deps.py --dry-run        # 只查看检测结果与安装计划，不实际安装
+```
+
+### 手动安装
+
+**无 GPU 的电脑（CPU 版，重点）：**
+
+```bash
+cd backend
+pip install torch --index-url https://download.pytorch.org/whl/cpu
+pip install transformers
+```
+
+**有 NVIDIA GPU 的电脑（CUDA 版）：**
+
+```bash
+cd backend
+pip install torch --index-url https://download.pytorch.org/whl/cu124
+pip install transformers
+```
+
+> 提示：CPU 版 torch 从 PyPI 默认源也能装，但建议使用上面的官方 CPU 索引，
+> 安装包更小且不会附带 CUDA 运行库。
+
+### 模型权重文件
+
+AI 分类与文稿向量化依赖本地模型权重文件（已加入 `.gitignore`，不入库），
+需要手动放置到以下目录：
+
+```text
+backend/app/aimodel/model/bert-base-chinese/        # AI 分类模型（HuggingFace 格式 + model.safetensors）
+backend/app/aimodel/model/bert_model.pt             # AI 分类微调权重（PyTorch 格式）
+backend/app/aiVectorizationModel/model/vectorization-model/  # 文稿向量化模型（model.safetensors）
+```
+
+权重文件在 GPU 机器上保存时张量为 CUDA 格式，代码已通过 `map_location=device`
+兼容无 GPU 机器（自动映射到 CPU），无需额外处理。
+
+### 验证安装
+
+```bash
+python -c "import torch, transformers; print(torch.__version__, torch.cuda.is_available()); print(transformers.__version__)"
+```
 
 ## 种子账号
 

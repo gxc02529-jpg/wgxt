@@ -10,3 +10,6 @@ httpx
 boto3
 openpyxl
 
+# AI 依赖（torch / transformers）体积大且分 GPU/CPU 版本，不在本文件安装：
+# 请运行 python install_ai_deps.py 自动检测 GPU 后安装（详见 README「AI 依赖安装」）
+
