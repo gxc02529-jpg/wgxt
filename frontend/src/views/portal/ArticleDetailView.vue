@@ -242,9 +242,10 @@ const replyTargetId = ref(null)
 const replyContent = ref('')
 const submitting = ref(false)
 
-// 观看时长统计：进入页面记起点，离开/切后台时上报（单次会话上限 600 秒）
+// 观看时长统计：进入页面记起点，离开/切后台时上报（单次会话上限 600 秒，每篇累计上限 30 分钟）
 const watchStart = ref(Date.now())
 const durationReported = ref(false)
+const watchLimitReached = ref(false)
 
 // 加载文章数据（首屏与相关推荐切换时都会调用）
 async function loadArticle(id) {
@@ -257,6 +258,7 @@ async function loadArticle(id) {
   favorited.value = false
   disliked.value = false
   durationReported.value = false
+  watchLimitReached.value = false
   resetComments()
   try {
     const [detail, statusRes] = await Promise.all([
@@ -437,10 +439,15 @@ async function removeReply(c, r) {
 
 // 上报本次观看时长：取实际停留秒数并封顶 600 秒（10 分钟），只上报一次
 function reportWatchDuration() {
-  if (durationReported.value || !article.value || !auth.isLoggedIn) return
+  if (durationReported.value || watchLimitReached.value || !article.value || !auth.isLoggedIn) return
   durationReported.value = true
   const seconds = Math.min(600, Math.max(1, Math.floor((Date.now() - watchStart.value) / 1000)))
-  historyApi.reportDuration(article.value.id, seconds).catch(() => {})
+  historyApi.reportDuration(article.value.id, seconds)
+    .then((res) => {
+      // 后端返回已达累计上限（30 分钟）时，本会话不再重复上报
+      if (res?.reached_limit) watchLimitReached.value = true
+    })
+    .catch(() => {})
 }
 
 async function toggleLike() {
