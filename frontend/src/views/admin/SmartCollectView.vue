@@ -1,17 +1,31 @@
 <template>
   <div class="smart-collect-page">
-    <div class="page-head">
+    <header class="sc-header">
       <div>
+        <div class="sc-header__eyebrow">News Research Console</div>
         <h1 class="page-title">智能采编</h1>
         <p class="page-description">创建采编任务，保存联网搜索发现的新闻线索，并可随时回看历史结果。</p>
       </div>
       <el-button type="primary" plain @click="router.push({ name: 'admin-smart-collect-evaluation' })">
         相关性评估
       </el-button>
+    </header>
+
+    <div class="sc-metrics" aria-label="采编任务概览">
+      <div v-for="item in metricItems" :key="item.key" class="sc-metric">
+        <span>{{ item.label }}</span>
+        <strong :class="item.key === 'failed' && item.value ? 'is-danger' : ''">{{ item.value }}</strong>
+      </div>
     </div>
 
-    <el-card shadow="never" class="create-card">
-      <template #header><strong>新建采编任务</strong></template>
+    <section class="sc-panel create-panel">
+      <div class="sc-panel__head">
+        <div>
+          <h2>新建采编任务</h2>
+          <p>输入新闻主题，后台会自动搜索中文新闻并保存线索。</p>
+        </div>
+        <span class="sc-panel__badge">Tavily Search</span>
+      </div>
       <el-form :model="form" inline class="search-form" @submit.prevent="createTask">
         <el-form-item label="新闻主题" class="query-item">
           <el-input
@@ -30,7 +44,7 @@
           </el-select>
         </el-form-item>
         <el-form-item label="最大结果数">
-          <el-input-number v-model="form.max_results" :min="1" :max="20" :step="1" />
+          <el-input-number v-model="form.max_results" :min="1" :max="10" :step="1" />
         </el-form-item>
         <el-form-item>
           <el-button type="primary" native-type="submit" :loading="creating">创建并搜索</el-button>
@@ -44,28 +58,29 @@
         show-icon
         :closable="false"
       />
-    </el-card>
+    </section>
 
-    <el-card shadow="never">
-      <template #header>
-        <div class="history-head">
-          <strong>历史采编任务</strong>
-          <div class="history-actions">
-            <el-select
-              v-model="filters.status"
-              placeholder="全部状态"
-              clearable
-              style="width: 130px"
-              @change="handleFilterChange"
-            >
-              <el-option label="进行中" value="running" />
-              <el-option label="已完成" value="completed" />
-              <el-option label="失败" value="failed" />
-            </el-select>
-            <el-button :loading="loading" @click="loadTasks">刷新</el-button>
-          </div>
+    <section class="sc-panel history-panel">
+      <div class="sc-panel__head history-head">
+        <div>
+          <h2>历史采编任务</h2>
+          <p>查看任务执行状态、线索数量和 Credits 消耗。</p>
         </div>
-      </template>
+        <div class="history-actions">
+          <el-select
+            v-model="filters.status"
+            placeholder="全部状态"
+            clearable
+            style="width: 130px"
+            @change="handleFilterChange"
+          >
+            <el-option label="进行中" value="running" />
+            <el-option label="已完成" value="completed" />
+            <el-option label="失败" value="failed" />
+          </el-select>
+          <el-button :loading="loading" @click="loadTasks">刷新</el-button>
+        </div>
+      </div>
 
       <el-table v-loading="loading" :data="tasks" empty-text="暂无采编任务">
         <el-table-column prop="id" label="任务ID" width="90" />
@@ -76,7 +91,7 @@
         </el-table-column>
         <el-table-column label="状态" width="100">
           <template #default="{ row }">
-            <el-tag :type="statusMeta[row.status]?.type || 'info'">
+            <el-tag :type="statusMeta[row.status]?.type || 'info'" effect="light" round>
               {{ statusMeta[row.status]?.label || row.status }}
             </el-tag>
           </template>
@@ -104,12 +119,12 @@
           @size-change="handleSizeChange"
         />
       </div>
-    </el-card>
+    </section>
   </div>
 </template>
 
 <script setup>
-import { onBeforeUnmount, onMounted, reactive, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { useRouter } from 'vue-router'
 import { smartCollectApi } from '../../api'
@@ -137,6 +152,21 @@ const statusMeta = {
   completed: { label: '已完成', type: 'success' },
   failed: { label: '失败', type: 'danger' },
 }
+
+const metricItems = computed(() => {
+  const counts = { total: tasks.value.length, running: 0, completed: 0, failed: 0 }
+  tasks.value.forEach((task) => {
+    if (task.status === 'running') counts.running += 1
+    if (task.status === 'completed') counts.completed += 1
+    if (task.status === 'failed') counts.failed += 1
+  })
+  return [
+    { key: 'total', label: '任务总数', value: counts.total },
+    { key: 'running', label: '进行中', value: counts.running },
+    { key: 'completed', label: '已完成', value: counts.completed },
+    { key: 'failed', label: '失败', value: counts.failed },
+  ]
+})
 
 function formatDate(value) {
   return value ? new Date(value).toLocaleString('zh-CN', { hour12: false }) : '-'
@@ -260,19 +290,212 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
-.page-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 16px; }
-.page-title { margin: 0; font-size: 24px; }
-.page-description { margin: 6px 0 0; color: var(--color-text-muted); font-size: 14px; }
-.create-card { margin-bottom: 16px; }
-.search-form { display: flex; align-items: flex-end; flex-wrap: wrap; gap: 4px; }
-.query-item { flex: 1; min-width: 280px; }
-.query-item :deep(.el-form-item__content), .query-item :deep(.el-input) { width: 100%; }
-.history-head, .history-actions { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
-.pagination-wrap { display: flex; justify-content: flex-end; padding-top: 16px; }
+.smart-collect-page {
+  display: grid;
+  gap: var(--space-5);
+}
+
+.sc-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding: var(--space-2) 0;
+}
+
+.sc-header__eyebrow {
+  margin-bottom: var(--space-1);
+  color: var(--color-primary);
+  font-size: var(--text-xs);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.page-title {
+  margin: 0;
+  color: var(--color-ink);
+  font-family: var(--font-heading);
+  font-size: var(--text-2xl);
+  font-weight: 700;
+  line-height: var(--leading-tight);
+}
+
+.page-description {
+  margin: var(--space-2) 0 0;
+  color: var(--color-ink-3);
+  font-size: var(--text-sm);
+  line-height: var(--leading-normal);
+}
+
+.sc-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--space-3);
+}
+
+.sc-metric {
+  display: grid;
+  gap: var(--space-1);
+  padding: var(--space-4);
+  background: var(--color-surface);
+  border: 1px solid var(--color-rule);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-card);
+}
+
+.sc-metric span {
+  color: var(--color-ink-3);
+  font-size: var(--text-xs);
+  font-weight: 600;
+}
+
+.sc-metric strong {
+  color: var(--color-ink);
+  font-size: var(--text-2xl);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.sc-metric strong.is-danger {
+  color: var(--color-danger);
+}
+
+.sc-panel {
+  padding: var(--space-5);
+  background: var(--color-surface);
+  border: 1px solid var(--color-rule);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-card);
+}
+
+.sc-panel__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-4);
+  margin-bottom: var(--space-4);
+  padding-bottom: var(--space-3);
+  border-bottom: 1px solid var(--color-rule);
+}
+
+.sc-panel__head h2 {
+  margin: 0;
+  color: var(--color-ink);
+  font-family: var(--font-heading);
+  font-size: var(--text-lg);
+  font-weight: 700;
+  line-height: var(--leading-tight);
+}
+
+.sc-panel__head p {
+  margin: var(--space-1) 0 0;
+  color: var(--color-ink-3);
+  font-size: var(--text-xs);
+  line-height: var(--leading-normal);
+}
+
+.sc-panel__badge {
+  flex-shrink: 0;
+  padding: var(--space-1) var(--space-3);
+  color: var(--color-primary);
+  background: var(--color-primary-soft);
+  border-radius: 999px;
+  font-size: var(--text-xs);
+  font-weight: 700;
+}
+
+.search-form {
+  display: flex;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+
+.query-item {
+  flex: 1;
+  min-width: 300px;
+}
+
+.query-item :deep(.el-form-item__content),
+.query-item :deep(.el-input) {
+  width: 100%;
+}
+
+.history-head {
+  align-items: center;
+}
+
+.history-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.history-panel :deep(.el-table) {
+  --el-table-border-color: var(--color-rule);
+  --el-table-header-bg-color: var(--color-paper-2);
+  --el-table-row-hover-bg-color: var(--color-primary-soft);
+  border-radius: var(--radius-sm);
+}
+
+.history-panel :deep(.el-table th.el-table__cell) {
+  color: var(--color-ink-2);
+  font-size: var(--text-xs);
+  font-weight: 700;
+}
+
+.history-panel :deep(.el-table td.el-table__cell) {
+  color: var(--color-ink-2);
+}
+
+.pagination-wrap {
+  display: flex;
+  justify-content: flex-end;
+  padding-top: var(--space-4);
+}
+
 @media (max-width: 900px) {
-  .page-head { align-items: stretch; flex-direction: column; }
-  .search-form { align-items: stretch; }
-  .query-item { flex-basis: 100%; }
-  .history-head { align-items: flex-start; flex-direction: column; }
+  .sc-header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .sc-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .search-form {
+    align-items: stretch;
+  }
+
+  .query-item {
+    flex-basis: 100%;
+  }
+
+  .sc-panel__head {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .history-actions {
+    width: 100%;
+    justify-content: space-between;
+  }
+}
+
+@media (max-width: 560px) {
+  .sc-metrics {
+    grid-template-columns: 1fr;
+  }
+
+  .history-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .history-actions :deep(.el-select) {
+    width: 100% !important;
+  }
 }
 </style>

@@ -240,4 +240,106 @@ onMounted(loadEvaluation)
   .page-head { flex-direction: column; }
   .agreement-grid, .overview-grid { grid-template-columns: 1fr; }
 }
+
+/* 与智能采编工作台统一的后台视觉覆盖（业务逻辑不变） */
+.evaluation-page {
+  display: grid;
+  gap: var(--space-5);
+}
+
+.page-head {
+  align-items: center;
+  padding: var(--space-2) 0;
+}
+
+.page-title {
+  color: var(--color-ink);
+  font-family: var(--font-heading);
+  font-size: var(--text-2xl);
+  font-weight: 700;
+}
+
+.page-description {
+  color: var(--color-ink-3);
+  font-size: var(--text-sm);
+}
+
+.overview-grid {
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+
+.overview-card,
+.section-card,
+.outlier-card {
+  overflow: hidden;
+  background: var(--color-surface);
+  border: 1px solid var(--color-rule);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-card);
+}
+
+.overview-card :deep(.el-card__body) {
+  gap: var(--space-1);
+}
+
+.overview-card span {
+  color: var(--color-ink-3);
+  font-size: var(--text-xs);
+  font-weight: 600;
+}
+
+.overview-card strong {
+  color: var(--color-ink);
+  font-size: var(--text-2xl);
+  font-variant-numeric: tabular-nums;
+}
+
+.section-card {
+  margin-bottom: var(--space-4);
+}
+
+.section-card :deep(.el-card__header),
+.outlier-card :deep(.el-card__header) {
+  border-bottom-color: var(--color-rule);
+  color: var(--color-ink);
+  font-weight: 700;
+}
+
+.agreement-item {
+  padding: var(--space-4);
+  background: var(--color-paper-2);
+  border: 1px solid var(--color-rule);
+  border-radius: var(--radius-md);
+}
+
+.agreement-item > strong {
+  color: var(--color-primary);
+  font-size: var(--text-3xl);
+}
+
+.outlier-section > h2 {
+  margin: var(--space-5) 0 var(--space-3);
+  color: var(--color-ink);
+  font-family: var(--font-heading);
+  font-size: var(--text-xl);
+  font-weight: 700;
+}
+
+.outlier-item {
+  padding: var(--space-3);
+  border-bottom-color: var(--color-rule);
+}
+
+.outlier-item h3 {
+  color: var(--color-ink);
+  font-size: var(--text-sm);
+  line-height: var(--leading-normal);
+}
+
+.task-query {
+  color: var(--color-primary);
+  font-size: var(--text-xs);
+  font-weight: 700;
+}
 </style>

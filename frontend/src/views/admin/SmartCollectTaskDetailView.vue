@@ -8,6 +8,21 @@
       <el-button :loading="loading" @click="loadTask">重新加载</el-button>
     </div>
 
+    <div v-if="task" class="workflow-steps" aria-label="采编流程进度">
+      <div
+        v-for="step in workflowSteps"
+        :key="step.key"
+        class="workflow-step"
+        :class="{ 'is-done': step.done, 'is-current': step.current }"
+      >
+        <span class="workflow-step__num">{{ step.index }}</span>
+        <div>
+          <strong>{{ step.label }}</strong>
+          <small>{{ step.hint }}</small>
+        </div>
+      </div>
+    </div>
+
     <el-card v-loading="loading" shadow="never" class="task-card">
       <el-alert
         v-if="errorMessage"
@@ -703,6 +718,56 @@ const labeledCount = computed(() => (
   ).length || 0
 ))
 
+const workflowSteps = computed(() => {
+  const eventCount = eventGrouping.value.events.length
+  const hasPrepared = eventGrouping.value.events.some((event) =>
+    event.clues.some((clue) => clue.content_status === 'completed'),
+  )
+  const historyVersions = Object.values(synthesisHistories.value)
+  const hasSynthesis = historyVersions.some((items) => Array.isArray(items) && items.length > 0)
+  const results = Object.values(synthesisResults.value)
+  const hasApproved = results.some((result) => result && result.status === 'approved')
+  const hasArticle = results.some((result) => result && result.article)
+  const steps = [
+    {
+      key: 'search',
+      label: '创建搜索任务',
+      hint: '后台完成Tavily搜索',
+      done: task.value?.status === 'completed',
+    },
+    {
+      key: 'event',
+      label: '选择线索创建事件',
+      hint: '从未分组线索中多选分组',
+      done: eventCount > 0,
+    },
+    {
+      key: 'prepare',
+      label: '准备事件材料',
+      hint: '先准备材料才能查询证据/AI整理',
+      done: hasPrepared,
+    },
+    {
+      key: 'synthesis',
+      label: 'AI整理事件',
+      hint: '生成事件整理版本',
+      done: hasSynthesis,
+    },
+    {
+      key: 'approve',
+      label: '确认采用并创建文稿',
+      hint: '确认版本后生成正式文稿',
+      done: hasApproved || hasArticle,
+    },
+  ]
+  const firstUndone = steps.findIndex((step) => !step.done)
+  return steps.map((step, index) => ({
+    ...step,
+    index: index + 1,
+    current: index === firstUndone,
+  }))
+})
+
 const timeRangeText = { day: '最近一天', week: '最近一周', month: '最近一月', year: '最近一年' }
 const statusMeta = {
   running: { label: '进行中', type: 'warning' },
@@ -1243,5 +1308,397 @@ onMounted(loadTask)
   .similarity-head { flex-direction: column; }
   .similarity-clues { grid-template-columns: 1fr; }
   :deep(.el-descriptions) { overflow-x: auto; }
+}
+
+/* ============================================================
+ * 智能采编工作台视觉升级（仅样式覆盖，业务逻辑不变）
+ * ============================================================ */
+.task-detail-page {
+  display: grid;
+  gap: var(--space-5);
+}
+
+.page-head {
+  align-items: center;
+  padding: var(--space-2) 0;
+}
+
+.page-title {
+  margin: 0;
+  color: var(--color-ink);
+  font-family: var(--font-heading);
+  font-size: var(--text-2xl);
+  font-weight: 700;
+  line-height: var(--leading-tight);
+}
+
+.workflow-steps {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: var(--space-2);
+}
+
+.workflow-step {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  min-width: 0;
+  padding: var(--space-3);
+  background: var(--color-surface);
+  border: 1px solid var(--color-rule);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-card);
+  transition: border-color var(--dur-fast) var(--ease-out),
+    background-color var(--dur-fast) var(--ease-out);
+}
+
+.workflow-step.is-done {
+  border-color: color-mix(in srgb, var(--color-success) 45%, var(--color-rule));
+  background: color-mix(in srgb, var(--color-success) 6%, var(--color-surface));
+}
+
+.workflow-step.is-current {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 2px var(--color-primary-soft);
+}
+
+.workflow-step__num {
+  flex: none;
+  display: grid;
+  width: 26px;
+  height: 26px;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--color-paper-2);
+  color: var(--color-ink-3);
+  font-size: var(--text-xs);
+  font-weight: 800;
+}
+
+.workflow-step.is-done .workflow-step__num {
+  background: var(--color-success);
+  color: #fff;
+}
+
+.workflow-step.is-current .workflow-step__num {
+  background: var(--color-primary);
+  color: #fff;
+}
+
+.workflow-step > div {
+  min-width: 0;
+}
+
+.workflow-step strong,
+.workflow-step small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workflow-step strong {
+  color: var(--color-ink);
+  font-size: var(--text-sm);
+  font-weight: 700;
+  line-height: var(--leading-tight);
+}
+
+.workflow-step small {
+  margin-top: var(--space-1);
+  color: var(--color-ink-3);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.task-card,
+.events-card,
+.similarity-card {
+  overflow: hidden;
+  background: var(--color-surface);
+  border: 1px solid var(--color-rule);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-card);
+}
+
+.task-card :deep(.el-card__body),
+.events-card :deep(.el-card__body),
+.similarity-card :deep(.el-card__body) {
+  padding: var(--space-5);
+}
+
+.task-card :deep(.el-descriptions) {
+  --el-descriptions-table-border: 1px solid var(--color-rule);
+  --el-descriptions-item-bordered-label-background: var(--color-paper-2);
+}
+
+.task-card :deep(.el-descriptions__label) {
+  color: var(--color-ink-3);
+  font-weight: 600;
+}
+
+.task-card :deep(.el-descriptions__content) {
+  color: var(--color-ink);
+}
+
+.events-head,
+.similarity-head,
+.result-card-head {
+  align-items: center;
+}
+
+.events-head strong,
+.similarity-head strong,
+.result-card-head strong {
+  color: var(--color-ink);
+  font-family: var(--font-heading);
+  font-size: var(--text-lg);
+  font-weight: 700;
+}
+
+.events-head p,
+.similarity-head p {
+  color: var(--color-ink-3);
+  font-size: var(--text-xs);
+  line-height: var(--leading-normal);
+}
+
+.events-head > span,
+.result-card-head span {
+  padding: var(--space-1) var(--space-3);
+  background: var(--color-paper-2);
+  border: 1px solid var(--color-rule);
+  border-radius: 999px;
+  color: var(--color-ink-3);
+  font-size: var(--text-xs);
+  font-weight: 700;
+}
+
+.events-section {
+  margin-top: var(--space-4);
+}
+
+.events-section > h2 {
+  color: var(--color-ink);
+  font-size: var(--text-base);
+  font-weight: 700;
+}
+
+.event-list {
+  display: grid;
+  gap: var(--space-4);
+  margin-top: var(--space-4);
+}
+
+.event-item {
+  overflow: hidden;
+  padding: var(--space-4);
+  background: var(--color-surface);
+  border: 1px solid var(--color-rule);
+  border-left: 3px solid var(--color-primary);
+  border-radius: var(--radius-md);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+
+.event-item__head {
+  align-items: flex-start;
+}
+
+.event-item__head h3 {
+  color: var(--color-ink);
+  font-family: var(--font-heading);
+  font-size: var(--text-lg);
+  font-weight: 700;
+  line-height: var(--leading-tight);
+}
+
+.event-item__head > div > span {
+  color: var(--color-ink-3);
+  font-size: var(--text-xs);
+}
+
+.event-actions {
+  gap: var(--space-1);
+}
+
+.event-actions :deep(.el-button) {
+  min-height: 32px;
+  border-radius: var(--radius-sm);
+}
+
+.event-clue-list {
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+}
+
+.event-clue-item {
+  padding: var(--space-3) var(--space-4);
+  background: var(--color-paper-2);
+  border: 1px solid var(--color-rule);
+  border-radius: var(--radius-sm);
+}
+
+.event-clue-item strong {
+  color: var(--color-ink);
+  font-size: var(--text-sm);
+  line-height: var(--leading-normal);
+}
+
+.event-clue-item small {
+  color: var(--color-ink-3);
+}
+
+.synthesis-history {
+  margin-top: var(--space-4);
+  padding-top: var(--space-4);
+}
+
+.synthesis-history__head strong {
+  color: var(--color-ink);
+  font-size: var(--text-sm);
+  font-weight: 700;
+}
+
+.synthesis-version {
+  border-color: var(--color-rule);
+  background: var(--color-surface);
+}
+
+.synthesis-version:hover,
+.synthesis-version.is-active {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 2px var(--color-primary-soft);
+}
+
+.synthesis-result {
+  padding: var(--space-4);
+  background: color-mix(in srgb, var(--color-primary-soft) 18%, var(--color-surface));
+  border: 1px solid color-mix(in srgb, var(--color-primary) 28%, var(--color-rule));
+  border-radius: var(--radius-md);
+}
+
+.synthesis-result__head strong {
+  color: var(--color-ink);
+  font-family: var(--font-heading);
+  font-size: var(--text-base);
+}
+
+.synthesis-summary {
+  color: var(--color-ink);
+  font-size: var(--text-sm);
+  line-height: var(--leading-loose);
+}
+
+.synthesis-section h4 {
+  color: var(--color-ink);
+  font-size: var(--text-sm);
+  font-weight: 700;
+}
+
+.synthesis-section p,
+.synthesis-section ol,
+.synthesis-section ul {
+  color: var(--color-ink-2);
+  line-height: var(--leading-loose);
+}
+
+.ungrouped-head {
+  margin-top: var(--space-4);
+  padding-top: var(--space-4);
+  border-top: 1px dashed var(--color-rule-strong);
+}
+
+.ungrouped-head > div {
+  align-items: baseline;
+}
+
+.ungrouped-head h2 {
+  color: var(--color-ink);
+  font-size: var(--text-base);
+  font-weight: 700;
+}
+
+.ungrouped-list {
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+}
+
+.ungrouped-item {
+  padding: var(--space-3) var(--space-4);
+  background: var(--color-surface);
+  border: 1px solid var(--color-rule);
+  border-radius: var(--radius-sm);
+  transition: border-color var(--dur-fast) var(--ease-out),
+    background-color var(--dur-fast) var(--ease-out);
+}
+
+.ungrouped-item:hover {
+  border-color: var(--color-primary);
+  background: var(--color-primary-soft);
+}
+
+.similarity-item,
+.result-item {
+  padding: var(--space-4);
+  background: var(--color-surface);
+  border: 1px solid var(--color-rule);
+  border-radius: var(--radius-md);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+
+.similarity-score strong {
+  color: var(--color-primary);
+}
+
+.result-item__head h2 {
+  color: var(--color-ink);
+  font-family: var(--font-heading);
+  font-size: var(--text-lg);
+  line-height: var(--leading-snug);
+}
+
+.result-snippet {
+  color: var(--color-ink-2);
+  line-height: var(--leading-loose);
+}
+
+.content-state--completed {
+  color: var(--color-success) !important;
+}
+
+.content-state--failed {
+  color: var(--color-danger) !important;
+}
+
+.content-state--pending {
+  color: var(--color-warning, #d97706) !important;
+}
+
+.error-text {
+  color: var(--color-danger);
+}
+
+@media (max-width: 1100px) {
+  .workflow-steps {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 700px) {
+  .workflow-steps {
+    grid-template-columns: 1fr;
+  }
+
+  .workflow-step strong,
+  .workflow-step small {
+    white-space: normal;
+  }
+
+  .task-card :deep(.el-card__body),
+  .events-card :deep(.el-card__body),
+  .similarity-card :deep(.el-card__body) {
+    padding: var(--space-4);
+  }
 }
 </style>
