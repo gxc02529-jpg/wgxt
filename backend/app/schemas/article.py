@@ -11,6 +11,7 @@ class ArticleIn(BaseModel):
     summary: str = Field(default="", max_length=500, description="摘要")
     content: str = Field(default="", description="正文（HTML）")
     cover_url: str = Field(default="", max_length=255, description="封面图URL")
+    city: str = Field(default="", max_length=50, description="城市（同城搜索），如 深圳")
     category_ids: List[int] = Field(default_factory=list, description="所属栏目ID列表（可多选）")
 
 

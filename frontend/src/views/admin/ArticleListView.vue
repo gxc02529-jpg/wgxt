@@ -192,5 +192,9 @@ onMounted(load)
 .mr-2 {
   margin-right: 6px;
 }
+
+.no-city {
+  color: var(--color-text-3, #999);
+}
 </style>
 

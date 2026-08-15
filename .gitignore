@@ -22,3 +22,6 @@ dist/
 # 日志与运行产物
 *.log
 backend/uploads/
+
+# 临时输出
+backend/temp_db_out.txt

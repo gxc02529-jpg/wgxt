@@ -29,6 +29,8 @@ class Article(Base):
     summary = Column(String(500), comment="摘要")
     content = Column(Text, comment="正文（HTML）")
     cover_url = Column(String(255), comment="封面图URL（来自资源管理）")
+    # 同城搜索：文稿归属城市（空串/None 表示全国，不参与同城过滤）
+    city = Column(String(50), index=True, comment="城市（同城搜索）")
 
     # 审核状态机：draft 草稿 → pending_first 待一审 → pending_second 待二审
     #            → published 已发布 / rejected 已驳回 / offline 已下线
@@ -64,6 +66,7 @@ class Article(Base):
             "author_name": self.author.nickname or self.author.username if self.author else "",
             "summary": self.summary,
             "cover_url": self.cover_url,
+            "city": self.city,
             "status": self.status,
             "view_count": self.view_count,
             "like_count": self.like_count,

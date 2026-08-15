@@ -12,21 +12,7 @@
           <span class="brand__text">文稿发布</span>
         </router-link>
 
-        <form class="search-box" role="search" @submit.prevent="doSearch">
-          <input
-            v-model="keyword"
-            type="search"
-            name="keyword"
-            placeholder="搜索文稿"
-            aria-label="搜索文稿"
-          />
-          <button type="submit" aria-label="搜索">
-            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
-              <circle cx="11" cy="11" r="7" />
-              <path d="m21 21-4.35-4.35" stroke-linecap="round" />
-            </svg>
-          </button>
-        </form>
+        <SearchPanel />
 
         <div class="user-actions">
           <template v-if="auth.isLoggedIn">
@@ -40,6 +26,7 @@
               <template #dropdown>
                 <el-dropdown-menu>
                   <el-dropdown-item @click="router.push('/favorites')">我的收藏</el-dropdown-item>
+                  <el-dropdown-item @click="openPreference">兴趣偏好</el-dropdown-item>
                   <el-dropdown-item v-if="auth.isEditor" @click="router.push('/admin/articles')">
                     写稿/管理
                   </el-dropdown-item>
@@ -69,6 +56,21 @@
           >
             {{ cat.name }}
           </router-link>
+
+          <!-- 同城搜索：选择城市后切换为同城内容 -->
+          <div class="city-picker">
+            <el-select
+              v-model="city"
+              class="city-picker__select"
+              placeholder="同城搜索"
+              filterable
+              clearable
+              @change="onCityChange"
+            >
+              <el-option label="全部城市（全站内容）" value="" />
+              <el-option v-for="c in cityOptions" :key="c" :label="c" :value="c" />
+            </el-select>
+          </div>
         </div>
       </nav>
     </header>
@@ -95,6 +97,14 @@
         </div>
       </div>
     </footer>
+
+    <!-- 兴趣偏好弹窗：用户菜单入口，可随时修改 -->
+    <PreferenceDialog
+      v-model="showPref"
+      :categories="prefCategories"
+      :initial-ids="prefIds"
+      @saved="onPrefSaved"
+    />
   </div>
 </template>
 
@@ -102,15 +112,27 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { categoryApi, themeApi } from '../api'
+import { articleApi, categoryApi, preferenceApi, themeApi } from '../api'
 import { useAuthStore } from '../stores/auth'
+import { useCityStore, CITY_PRESET } from '../stores/city'
+import SearchPanel from '../features/search/SearchPanel.vue'
+import PreferenceDialog from '../features/preference/PreferenceDialog.vue'
 
 const route = useRoute()
 const router = useRouter()
 const auth = useAuthStore()
+const cityStore = useCityStore()
 const categories = ref([])
-const keyword = ref('')
 const theme = ref('editorial')
+
+// 同城搜索：当前城市 + 城市选项（预置城市 ∪ 已有数据的城市）
+const city = ref(cityStore.city)
+const cityOptions = ref([...CITY_PRESET])
+
+// 兴趣偏好弹窗状态（用户菜单入口）
+const showPref = ref(false)
+const prefCategories = ref([])
+const prefIds = ref([])
 
 // 当前栏目高亮（从路由 slug 判断；computed 保证切换栏目时高亮同步更新）
 const currentSlug = computed(() => route.params.slug || '')
@@ -135,11 +157,46 @@ onMounted(async () => {
   } catch (e) {
     ElMessage.error(String(e))
   }
+  // 拉取已有数据的城市，补充到下拉选项（失败不影响预置城市）
+  try {
+    const res = await articleApi.cities()
+    const extras = (res.items || []).filter((c) => c && !cityOptions.value.includes(c))
+    if (extras.length) cityOptions.value = cityOptions.value.concat(extras)
+  } catch {
+    // 城市列表拉取失败不阻塞页面
+  }
 })
 
-function doSearch() {
-  if (!keyword.value.trim()) return
-  router.push({ name: 'search', query: { q: keyword.value.trim() } })
+// ---- 同城搜索：选择城市后写入 store 并回到首页展示同城内容 ----
+function onCityChange(val) {
+  cityStore.setCity(val)
+  if (route.name !== 'home') {
+    router.push({ name: 'home' })
+  }
+}
+
+// ---- 搜索下拉面板逻辑（已独立到 features/search/SearchPanel.vue）----
+
+// ---- 兴趣偏好弹窗（用户菜单入口，可随时修改）----
+
+async function openPreference() {
+  // 同时拉取分类列表与当前已选偏好，供弹窗回显
+  try {
+    const [catRes, prefRes] = await Promise.all([
+      categoryApi.list(),
+      preferenceApi.get(),
+    ])
+    prefCategories.value = catRes.items
+    prefIds.value = prefRes.categories || []
+    showPref.value = true
+  } catch (e) {
+    ElMessage.error(String(e))
+  }
+}
+
+function onPrefSaved(ids) {
+  prefIds.value = ids
+  ElMessage.success('兴趣偏好已更新')
 }
 
 function logout() {
@@ -198,49 +255,6 @@ function logout() {
   font-weight: 700;
   letter-spacing: var(--tracking-tight);
   color: var(--color-ink);
-}
-
-.search-box {
-  flex: 1;
-  max-width: 420px;
-  margin-left: auto;
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  padding: 6px 2px;
-  border-bottom: var(--rule) solid var(--color-rule-strong);
-  transition: border-color var(--dur-base) var(--ease-out);
-}
-
-.search-box:focus-within {
-  border-color: var(--color-accent);
-}
-
-.search-box input {
-  flex: 1;
-  min-width: 0;
-  border: none;
-  outline: none;
-  background: transparent;
-  font-size: var(--text-sm);
-  color: var(--color-ink);
-}
-
-.search-box button {
-  border: none;
-  background: none;
-  color: var(--color-ink-2);
-  width: 40px;
-  height: 40px;
-  display: grid;
-  place-items: center;
-  border-radius: var(--radius-sm);
-  transition: color var(--dur-base) var(--ease-out), background var(--dur-base) var(--ease-out);
-}
-
-.search-box button:hover {
-  color: var(--color-accent);
-  background: var(--color-primary-soft);
 }
 
 .user-actions {
@@ -345,6 +359,43 @@ function logout() {
   background: var(--color-accent);
 }
 
+/* 同城搜索：导航条右侧城市选择器 */
+.city-picker {
+  margin-left: auto;
+  padding-left: var(--space-3);
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+}
+
+.city-picker__select {
+  width: 140px;
+}
+
+.city-picker__select :deep(.el-select__wrapper) {
+  min-height: 32px;
+  box-shadow: none;
+  border-bottom: var(--rule) solid var(--color-rule-strong);
+  border-radius: 0;
+  background: transparent;
+}
+
+.city-picker__select :deep(.el-select__wrapper:hover),
+.city-picker__select :deep(.el-select__wrapper.is-focused) {
+  box-shadow: none;
+}
+
+.city-picker__select :deep(.el-select__placeholder) {
+  color: var(--color-ink-3);
+  font-size: var(--text-sm);
+}
+
+.city-picker__select :deep(.el-select__selected-item) {
+  color: var(--color-accent);
+  font-weight: 600;
+  font-size: var(--text-sm);
+}
+
 .site-main {
   flex: 1;
   min-height: calc(100dvh - 280px);
@@ -405,18 +456,6 @@ function logout() {
     gap: var(--space-3);
     padding-top: 10px;
     padding-bottom: 10px;
-  }
-
-  .search-box {
-    order: 3;
-    flex-basis: 100%;
-    max-width: none;
-    margin-left: 0;
-  }
-
-  .search-box button {
-    width: var(--size-touch);
-    height: var(--size-touch);
   }
 
   .link-btn {

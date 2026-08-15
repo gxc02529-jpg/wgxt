@@ -67,9 +67,10 @@ def ensure_database() -> None:
 
 
 def ensure_schema_compat() -> None:
-    """幂等兼容迁移：article_reviews.reviewer_id 允许为空（系统自动审核时无人工审核人）。
-
-    新建库时 create_all 已按新模型建表；旧库执行一次 MODIFY 即可，重复执行无副作用。
+    """幂等兼容迁移：
+    1. article_reviews.reviewer_id 允许为空（系统自动审核时无人工审核人）；
+    2. articles.city 列（同城搜索）：旧库补充列，已存在则跳过。
+    新建库时 create_all 已按新模型建表；旧库执行一次 MODIFY/ADD 即可，重复执行无副作用。
     """
     with engine.begin() as conn:
         row = conn.execute(
@@ -82,6 +83,23 @@ def ensure_schema_compat() -> None:
         if row and str(row[0]).upper() != "YES":
             conn.execute(text("ALTER TABLE article_reviews MODIFY COLUMN reviewer_id INT NULL"))
             print("已迁移：article_reviews.reviewer_id 允许为空（支持系统自动审核）")
+
+        # 2. articles.city：同城搜索字段（兼容旧库）
+        city_col = conn.execute(
+            text(
+                "SELECT COLUMN_NAME FROM information_schema.COLUMNS "
+                "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'articles' "
+                "AND COLUMN_NAME = 'city'"
+            )
+        ).first()
+        if not city_col:
+            conn.execute(
+                text(
+                    "ALTER TABLE articles ADD COLUMN city VARCHAR(50) NULL "
+                    "COMMENT '城市（同城搜索），如 深圳' AFTER cover_url"
+                )
+            )
+            print("已迁移：articles.city 列新增成功（同城搜索）")
 
 
 def get_db():

@@ -21,8 +21,10 @@ export const categoryApi = {
 // ---- 文稿 ----
 export const articleApi = {
   list: (params) => client.get('/articles', { params }),
+  cities: () => client.get('/articles/cities'),
   detail: (id) => client.get(`/articles/${id}`),
   related: (id, params) => client.get(`/articles/${id}/related`, { params }),
+  recommend: (params) => client.get('/articles/recommend', { params }),
   mine: (params) => client.get('/articles/mine', { params }),
   adminList: (params) => client.get('/articles/admin', { params }),
   create: (data) => client.post('/articles', data),
@@ -53,6 +55,12 @@ export const interactionApi = {
 // ---- 埋点 ----
 export const eventApi = {
   report: (data) => client.post('/events', data),
+}
+
+// ---- 用户兴趣偏好（登录后多选栏目）----
+export const preferenceApi = {
+  get: () => client.get('/preferences'),
+  save: (categoryIds) => client.put('/preferences', { category_ids: categoryIds }),
 }
 
 // ---- 资源 ----

@@ -20,14 +20,29 @@
             <el-option v-for="c in categories" :key="c.id" :label="c.name" :value="c.id" />
           </el-select>
         </el-form-item>
-        <el-form-item label="摘要" class="form-row__item">
-          <el-input v-model="form.summary" maxlength="500" show-word-limit type="textarea" :rows="2" placeholder="一句话摘要，展示在列表页" />
+        <el-form-item label="城市（同城搜索使用）" class="form-row__item">
+          <el-select
+            v-model="form.city"
+            placeholder="选择城市（留空表示全国/不限定）"
+            clearable
+            filterable
+            allow-create
+            default-first-option
+            style="width: 100%"
+          >
+            <el-option v-for="c in cityPreset" :key="c" :label="c" :value="c" />
+          </el-select>
         </el-form-item>
       </div>
 
-      <el-form-item label="封面图（从资源库选择）">
-        <ResourcePicker v-model="form.cover_url" />
-      </el-form-item>
+      <div class="form-row">
+        <el-form-item label="摘要" class="form-row__item">
+          <el-input v-model="form.summary" maxlength="500" show-word-limit type="textarea" :rows="2" placeholder="一句话摘要，展示在列表页" />
+        </el-form-item>
+        <el-form-item label="封面图（从资源库选择）" class="form-row__item">
+          <ResourcePicker v-model="form.cover_url" />
+        </el-form-item>
+      </div>
 
       <el-form-item label="正文内容（支持 HTML）">
         <div class="editor-toolbar">
@@ -53,6 +68,7 @@ import { onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { articleApi, categoryApi } from '../../api'
+import { CITY_PRESET } from '../../stores/city'
 import ResourcePicker from '../../components/ResourcePicker.vue'
 
 const route = useRoute()
@@ -63,12 +79,14 @@ const categories = ref([])
 const saving = ref(false)
 const submitting = ref(false)
 const previewMode = ref(false)
+const cityPreset = CITY_PRESET
 
 const form = reactive({
   title: '',
   summary: '',
   cover_url: '',
   category_ids: [],
+  city: '',
   content: '',
 })
 
@@ -89,6 +107,7 @@ onMounted(async () => {
         cover_url: detail.cover_url,
         content: detail.content || '',
         category_ids: detail.categories.map((c) => c.id),
+        city: detail.city || '',
       })
     }
   } catch (e) {
@@ -111,6 +130,7 @@ async function save(submitReview) {
       cover_url: form.cover_url,
       content: form.content,
       category_ids: form.category_ids,
+      city: form.city || '',
     }
     const res = isEdit
       ? await articleApi.update(route.params.id, payload)
