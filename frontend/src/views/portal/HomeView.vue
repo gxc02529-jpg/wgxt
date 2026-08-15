@@ -205,7 +205,7 @@ async function load() {
     // 推荐区块：开关开启时请求个性化推荐（未登录返回通用推荐），失败静默不展示
     if (recommendEnabled.value) {
       articleApi
-        .recommend({ limit: 8 })
+        .portalRecommend({ limit: 8 })
         .then((res) => {
           recommendItems.value = res.items || []
         })

@@ -37,6 +37,8 @@ export const articleApi = {
   related: (id, params) => client.get(`/articles/${id}/related`, { params }),
   // 个性化推荐：可选登录，登录且历史足量时返回向量召回结果，否则通用推荐
   recommend: (params) => client.get('/articles/recommend', { params }),
+  // 门户“为你推荐”：使用原dev向量/通用推荐逻辑
+  portalRecommend: (params) => client.get('/articles/recommend/portal', { params }),
   mine: (params) => client.get('/articles/mine', { params }),
   adminList: (params) => client.get('/articles/admin', { params }),
   create: (data) => client.post('/articles', data),

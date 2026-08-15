@@ -47,6 +47,7 @@ from ..services.smart_collect_article_writing_service import (
     SmartCollectArticleWritingUnsupportedError,
 )
 from ..services.text_utils import strip_html
+from ..services.recommendation_service import recommend_articles as legacy_recommend_articles
 from .recommend import recommend_articles as preference_recommend_articles
 
 router = APIRouter(prefix="/articles", tags=["文稿"])
@@ -237,6 +238,19 @@ def admin_articles(
     query = query.order_by(sort_column.desc() if sort_order == "desc" else sort_column.asc())
     rows, total = paginate(query, page, page_size)
     return {"items": [a.to_dict() for a in rows], "total": total, "page": page, "page_size": page_size}
+
+
+@router.get("/recommend/portal", summary="门户为你推荐（原dev向量/通用推荐逻辑）")
+def portal_recommend_articles(
+    limit: int = Query(default=8, ge=1, le=20, description="返回推荐文稿数量"),
+    db: Session = Depends(get_db),
+    user: User | None = Depends(get_optional_user),
+):
+    """门户“为你推荐”使用原dev推荐链路，避免被偏好/行为推荐逻辑替换。"""
+    items = legacy_recommend_articles(db, user, limit)
+    if not items:
+        raise HTTPException(400, "暂无已发布文稿可推荐")
+    return {"items": [a.to_dict() for a in items], "total": len(items)}
 
 
 @router.get("/recommend", summary="用户个性化推荐（可选登录，默认 8 篇）")
