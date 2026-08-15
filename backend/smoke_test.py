@@ -632,7 +632,8 @@ def main():
         print(f"[20] 文稿向量化入库 OK  total={res['total']} model={res['model_version']}")
 
     if should_run(21):
-        # 21. 用户个性化推荐：未登录通用推荐；登录后排除已观看/不感兴趣；limit 边界
+        # 21. 用户个性化推荐：未登录通用推荐；登录后排除已观看/不感兴趣；
+        #     观看历史满 20 篇后触发向量召回（KNN top-50 + 热门兜底）
         r = client.get(f"{BASE}/articles/recommend")
         assert r.status_code == 200, f"未登录推荐失败: {r.text}"
         anon_items = r.json()["items"]
@@ -652,21 +653,39 @@ def main():
         assert r.status_code == 422, f"limit=21 应 422: {r.text}"
         print("[21] 推荐 limit 参数/越界校验 OK")
 
-        # 登录用户：观看一篇后，推荐不应再包含该篇
+        # 登录用户：访问详情页（写入 view_history）后，推荐不应再包含该篇
         watch_target = ids[0]
-        r = client.post(f"{BASE}/events", headers=user_h, json={"event_type": "view", "article_id": watch_target})
-        assert r.json().get("ok") is True, f"观看埋点失败: {r.text}"
-        r = client.get(f"{BASE}/articles/recommend", headers=user_h, params={"limit": 20})
+        r = client.get(f"{BASE}/articles/{watch_target}", headers=user_h)
+        assert r.status_code == 200, f"访问详情页失败: {r.text}"
+        r = client.get(f"{BASE}/articles/recommend", headers=user_h, params={"limit": 20}, timeout=120)
         assert r.status_code == 200 and r.json()["items"], f"登录推荐失败: {r.text}"
         assert all(a["id"] != watch_target for a in r.json()["items"]), "推荐不应包含已观看文稿"
         print(f"[21] 登录推荐排除已观看 OK  watch_target={watch_target}")
+
+        # 给 user 补足 20 条观看历史（访问详情页写入 view_history），触发向量召回分支
+        r = client.get(f"{BASE}/articles", params={"page_size": 20})
+        assert r.status_code == 200 and len(r.json()["items"]) >= 20, "需要至少 20 篇已发布文稿用于向量召回测试"
+        history_ids = [a["id"] for a in r.json()["items"]]
+        for article_id in history_ids:
+            r = client.get(f"{BASE}/articles/{article_id}", headers=user_h)
+            assert r.status_code == 200, f"补观看历史失败 article_id={article_id}"
+        r = client.get(f"{BASE}/articles/recommend", headers=user_h, timeout=120)
+        assert r.status_code == 200, f"向量召回推荐失败: {r.text}"
+        vec_items = r.json()["items"]
+        assert vec_items, "向量召回推荐结果不应为空"
+        assert len(vec_items) <= 8, f"向量召回推荐数量异常: {len(vec_items)}"
+        vec_ids = [a["id"] for a in vec_items]
+        assert len(vec_ids) == len(set(vec_ids)), "向量召回推荐不应包含重复文稿"
+        assert all(a["status"] == "published" for a in vec_items), "向量召回推荐必须是已发布文稿"
+        assert not (set(vec_ids) & set(history_ids)), "向量召回推荐不应包含最近观看过的文稿"
+        print(f"[21] 向量召回推荐 OK（观看历史≥20 篇，items={len(vec_items)}）")
 
         # 标记不感兴趣后排除，再取消恢复（不污染演示数据）
         if len(ids) >= 2:
             dislike_target = ids[1]
             r = client.post(f"{BASE}/interactions/dislike?article_id={dislike_target}", headers=user_h)
             assert r.status_code == 200, f"标记不感兴趣失败: {r.text}"
-            r = client.get(f"{BASE}/articles/recommend", headers=user_h, params={"limit": 20})
+            r = client.get(f"{BASE}/articles/recommend", headers=user_h, params={"limit": 20}, timeout=120)
             assert all(a["id"] != dislike_target for a in r.json()["items"]), "推荐不应包含不感兴趣文稿"
             r = client.delete(f"{BASE}/interactions/dislike?article_id={dislike_target}", headers=user_h)
             assert r.status_code == 200, f"取消不感兴趣失败: {r.text}"
