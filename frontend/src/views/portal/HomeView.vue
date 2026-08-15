@@ -9,6 +9,13 @@
       <span class="notice__text">{{ notice }}</span>
     </div>
 
+    <!-- 同城搜索状态提示 -->
+    <div v-if="cityStore.active" class="city-banner" role="status">
+      <span class="city-banner__label">同城</span>
+      <span class="city-banner__text">当前正在浏览「{{ cityStore.label }}」本地内容，切换城市请使用顶部导航栏「同城搜索」</span>
+      <button class="city-banner__clear" type="button" @click="clearCity">切回全站</button>
+    </div>
+
     <!-- 头条：优先管理员配置的轮播，未配置则展示热门文稿 -->
     <section class="lead" aria-label="头条区域">
       <el-carousel v-if="bannerItems.length" height="380px" class="lead__carousel" :interval="5000">
@@ -143,11 +150,15 @@
 </template>
 
 <script setup>
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { articleApi, categoryApi, portalApi } from '../../api'
+import { useCityStore } from '../../stores/city'
 import ArticleCard from '../../components/ArticleCard.vue'
 
+const route = useRoute()
+const cityStore = useCityStore()
 const modules = ref([])
 const latestArticles = ref([])
 const hotArticles = ref([])
@@ -173,12 +184,17 @@ const recommendEnabled = computed(() => {
 
 const sectionCategories = computed(() => categories.value.slice(0, 4))
 
-onMounted(async () => {
+// 同城搜索：组装城市参数（空串表示全站，不传 city）
+function cityParam() {
+  return cityStore.city ? { city: cityStore.city } : {}
+}
+
+async function load() {
   try {
     const [moduleRes, latestRes, hotRes, catRes] = await Promise.all([
       portalApi.modules(),
-      articleApi.list({ sort: 'latest', page_size: 8 }),
-      articleApi.list({ sort: 'hot', page_size: 6 }),
+      articleApi.list({ sort: 'latest', page_size: 8, ...cityParam() }),
+      articleApi.list({ sort: 'hot', page_size: 6, ...cityParam() }),
       categoryApi.list(),
     ])
     modules.value = moduleRes.items
@@ -198,10 +214,10 @@ onMounted(async () => {
         })
     }
 
-    // 并行加载每个栏目分区的最新文稿
+    // 并行加载每个栏目分区的最新文稿（同城模式下栏目分区同样按城市过滤）
     const sections = await Promise.all(
       sectionCategories.value.map(async (cat) => {
-        const res = await articleApi.list({ category_id: cat.id, sort: 'latest', page_size: 4 })
+        const res = await articleApi.list({ category_id: cat.id, sort: 'latest', page_size: 4, ...cityParam() })
         return [cat.id, res.items]
       }),
     )
@@ -209,7 +225,19 @@ onMounted(async () => {
   } catch (e) {
     ElMessage.error(String(e))
   }
+}
+
+// 切回全站：清空城市选择
+function clearCity() {
+  cityStore.setCity('')
+}
+
+// 城市变化（导航条选择/清除）→ 重新加载首页所有列表
+watch(() => cityStore.city, () => {
+  if (route.name === 'home') load()
 })
+
+onMounted(load)
 </script>
 
 <style scoped>
@@ -217,6 +245,52 @@ onMounted(async () => {
 /* Hallmark · pre-emit critique: P4 H4 E4 S4 R4 V4 */
 .home {
   padding-top: var(--space-5);
+}
+
+/* 同城搜索状态提示条 */
+.city-banner {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  border: var(--rule) solid var(--color-accent);
+  border-left: 3px solid var(--color-accent);
+  background: var(--color-primary-soft);
+  padding: 8px var(--space-4);
+  margin-bottom: var(--space-5);
+  font-size: var(--text-sm);
+}
+
+.city-banner__label {
+  flex-shrink: 0;
+  background: var(--color-accent);
+  color: #fff;
+  font-size: var(--text-xs);
+  padding: 2px 10px;
+  border-radius: 2px;
+  font-weight: 700;
+}
+
+.city-banner__text {
+  flex: 1;
+  min-width: 0;
+  color: var(--color-ink-2);
+}
+
+.city-banner__clear {
+  flex-shrink: 0;
+  border: none;
+  background: none;
+  color: var(--color-accent);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  transition: background var(--dur-base) var(--ease-out);
+}
+
+.city-banner__clear:hover {
+  background: var(--color-paper-2);
 }
 
 .notice {

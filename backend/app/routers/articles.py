@@ -27,7 +27,6 @@ from ..schemas.article_writing import ArticleWritingResponse
 from ..services import embedding_service
 from ..services.article_import_service import import_excel
 from ..services.llm_provider import OpenAICompatibleLLMProvider
-from ..services.recommendation_service import recommend_articles
 from ..services.settings_service import get_setting
 from ..services.smart_collect_article_service import SmartCollectArticleService
 from ..services.smart_collect_article_writing_service import (
@@ -48,6 +47,7 @@ from ..services.smart_collect_article_writing_service import (
     SmartCollectArticleWritingUnsupportedError,
 )
 from ..services.text_utils import strip_html
+from .recommend import recommend_articles as preference_recommend_articles
 
 router = APIRouter(prefix="/articles", tags=["文稿"])
 
@@ -142,6 +142,7 @@ def _apply_channels(db: Session, article: Article, channel_ids: list[int]):
 def list_articles(
     category_id: int | None = Query(default=None, description="按栏目筛选"),
     keyword: str | None = Query(default=None, description="标题/摘要关键词"),
+    city: str | None = Query(default=None, description="按城市筛选（同城搜索），如 深圳"),
     sort: str = Query(default="latest", pattern="^(latest|hot)$", description="latest 最新 / hot 最热"),
     page: int = 1,
     page_size: int = 12,
@@ -153,6 +154,8 @@ def list_articles(
                      .filter(article_categories.c.category_id == category_id)
     if keyword:
         query = query.filter(or_(Article.title.like(f"%{keyword}%"), Article.summary.like(f"%{keyword}%")))
+    if city:
+        query = query.filter(Article.city == city)
 
     if sort == "hot":
         query = query.order_by(Article.view_count.desc(), Article.published_at.desc())
@@ -161,6 +164,23 @@ def list_articles(
 
     rows, total = paginate(query, page, page_size)
     return {"items": [a.to_dict() for a in rows], "total": total, "page": page, "page_size": page_size}
+
+
+@router.get("/cities", summary="已发布文稿覆盖的城市列表（同城搜索下拉）")
+def list_cities(db: Session = Depends(get_db)):
+    """返回所有已发布文稿中出现过的城市（去重、非空），供前台城市下拉选择。"""
+    rows = (
+        db.query(Article.city)
+        .filter(
+            Article.status == "published",
+            Article.city.isnot(None),
+            Article.city != "",
+        )
+        .distinct()
+        .order_by(Article.city.asc())
+        .all()
+    )
+    return {"items": [r[0] for r in rows]}
 
 
 @router.get("/mine", summary="我的文稿（编辑/管理员）")
@@ -257,10 +277,7 @@ def user_recommend_articles(
       若向量化失败会自动回退通用推荐，不阻断接口。
     - 算法细节与调参说明见 docs/article_recommend_spec.md。
     """
-    items = recommend_articles(db, user, limit)
-    if not items:
-        raise HTTPException(400, "暂无已发布文稿可推荐")
-    return {"items": [a.to_dict() for a in items], "total": len(items)}
+    return preference_recommend_articles(db=db, user=user, limit=limit)
 
 
 @router.post(

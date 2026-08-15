@@ -83,6 +83,24 @@ def ensure_schema_compat() -> None:
             conn.execute(text("ALTER TABLE article_reviews MODIFY COLUMN reviewer_id INT NULL"))
             print("已迁移：article_reviews.reviewer_id 允许为空（支持系统自动审核）")
 
+    # 幂等新增 articles.city 同城搜索字段（老库补列，重复执行无副作用）
+    with engine.begin() as conn:
+        city_col = conn.execute(
+            text(
+                "SELECT COLUMN_NAME FROM information_schema.COLUMNS "
+                "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'articles' "
+                "AND COLUMN_NAME = 'city'"
+            )
+        ).first()
+        if not city_col:
+            conn.execute(
+                text(
+                    "ALTER TABLE articles ADD COLUMN city VARCHAR(50) NULL "
+                    "COMMENT '城市（同城搜索），如 深圳' AFTER cover_url"
+                )
+            )
+            print("已迁移：articles.city 列新增成功（同城搜索）")
+
     # 幂等新增 view_history 观看时长字段（老库补列，重复执行无副作用）
     with engine.begin() as conn:
         for col, ddl in (

@@ -36,6 +36,14 @@
         <router-link :to="{ name: 'register', query: { redirect: redirect } }">立即注册</router-link>
       </p>
     </div>
+
+    <!-- 登录后兴趣偏好选择：未设置过且未跳过时弹出 -->
+    <PreferenceDialog
+      v-model="showPref"
+      :categories="prefCategories"
+      @saved="onPrefSaved"
+      @skipped="onPrefSkipped"
+    />
   </div>
 </template>
 
@@ -43,8 +51,9 @@
 import { reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { authApi } from '../../api'
+import { authApi, categoryApi, preferenceApi } from '../../api'
 import { useAuthStore } from '../../stores/auth'
+import PreferenceDialog from '../../features/preference/PreferenceDialog.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -52,6 +61,10 @@ const auth = useAuthStore()
 const formRef = ref()
 const loading = ref(false)
 const redirect = route.query.redirect || '/'
+
+// 兴趣偏好弹窗状态
+const showPref = ref(false)
+const prefCategories = ref([])
 
 const form = reactive({ username: '', password: '' })
 const rules = {
@@ -66,12 +79,46 @@ async function submit() {
     const res = await authApi.login(form)
     auth.setSession(res.access_token, res.user)
     ElMessage.success('登录成功')
-    router.push(redirect)
+    await maybeOpenPreference(res.user)
   } catch (e) {
     ElMessage.error(String(e))
   } finally {
     loading.value = false
   }
+}
+
+// 登录后判断是否需要弹出兴趣偏好选择
+async function maybeOpenPreference(user) {
+  const skipKey = `wgf_pref_skipped_${user?.id}`
+  try {
+    const pref = await preferenceApi.get()
+    if (pref.has_preference || localStorage.getItem(skipKey)) {
+      router.push(redirect)
+      return
+    }
+    const cats = await categoryApi.list()
+    prefCategories.value = cats.items || []
+    showPref.value = true
+  } catch {
+    // 查询失败不阻塞登录，直接进入
+    router.push(redirect)
+  }
+}
+
+function onPrefSaved() {
+  showPref.value = false
+  router.push(redirect)
+}
+
+function onPrefSkipped() {
+  const skipKey = `wgf_pref_skipped_${auth.user?.id}`
+  try {
+    localStorage.setItem(skipKey, '1')
+  } catch {
+    // ignore
+  }
+  showPref.value = false
+  router.push(redirect)
 }
 </script>
 

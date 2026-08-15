@@ -552,5 +552,9 @@ onMounted(async () => {
 .import-detail__reason--fail {
   color: #b91c1c;
 }
+
+.no-city {
+  color: var(--color-text-3, #999);
+}
 </style>
 

@@ -10,6 +10,7 @@ from .resource import Resource
 from .portal import PortalModule
 from .event import EventLog
 from .interaction import UserAction
+from .preference import UserPreference
 from .anonymous_action import AnonymousAction
 from .system_setting import SystemSetting
 from .dify_workflow import DifyWorkflow
@@ -33,7 +34,7 @@ from .smart_collect import (
 __all__ = [
     "User", "Category", "Article", "article_categories", "ArticleReview",
     "Channel", "article_channels",
-    "Resource", "PortalModule", "EventLog", "UserAction", "AnonymousAction",
+    "Resource", "PortalModule", "EventLog", "UserAction", "UserPreference", "AnonymousAction",
     "SystemSetting", "DifyWorkflow", "ViewHistory", "AICallLog", "AITask", "AICorrection",
     "Comment", "CheckinLog", "ArticleEmbedding",
     "SmartCollectTask", "NewsClue", "NewsClueContent", "SmartCollectTaskClue",

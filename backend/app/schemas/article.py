@@ -12,6 +12,7 @@ class ArticleIn(BaseModel):
     content: str = Field(default="", description="正文（HTML）")
     content_source: str = Field(default="", description="正文纯文本（不含 HTML 标签，供搜索/AI 使用）")
     cover_url: str = Field(default="", max_length=255, description="封面图URL")
+    city: str = Field(default="", max_length=50, description="城市（同城搜索），如 深圳")
     category_ids: List[int] = Field(default_factory=list, description="所属栏目ID列表（可多选）")
     channel_ids: List[int] = Field(default_factory=list, description="分发渠道ID列表（可多选；基础渠道自动包含，不可移除）")
 

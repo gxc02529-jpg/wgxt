@@ -27,3 +27,5 @@ backend/uploads/
 backend/app/aiVectorizationModel/model/vectorization-model/model.safetensors
 backend/app/aimodel/model/bert_model.pt
 backend/app/multilingual-e5-small/model.safetensors
+# 临时输出
+backend/temp_db_out.txt

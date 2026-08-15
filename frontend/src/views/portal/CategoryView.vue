@@ -22,6 +22,7 @@
       >
         {{ opt.label }}
       </button>
+      <span v-if="cityStore.active" class="sort-bar__city">同城 · {{ cityStore.label }}</span>
     </div>
 
     <div v-loading="loading" class="article-grid">
@@ -46,10 +47,12 @@ import { onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { articleApi, categoryApi } from '../../api'
+import { useCityStore } from '../../stores/city'
 import ArticleCard from '../../components/ArticleCard.vue'
 
 const route = useRoute()
 const router = useRouter()
+const cityStore = useCityStore()
 const categories = ref([])
 const current = ref(null)
 const articles = ref([])
@@ -74,6 +77,8 @@ async function load() {
     current.value = categories.value.find((c) => c.slug === slug) || null
     const params = { sort: sort.value, page: page.value, page_size: pageSize }
     if (current.value) params.category_id = current.value.id
+    // 同城搜索：选择城市后栏目列表仅展示该城市内容
+    if (cityStore.city) params.city = cityStore.city
     const res = await articleApi.list(params)
     articles.value = res.items
     total.value = res.total
@@ -96,6 +101,8 @@ function changePage(p) {
 }
 
 watch(() => route.params.slug, load)
+// 城市变化（导航条选择/清除）→ 当前栏目页同步刷新
+watch(() => cityStore.city, load)
 onMounted(load)
 </script>
 
@@ -159,6 +166,17 @@ onMounted(load)
   bottom: 0;
   height: 2px;
   background: var(--color-accent);
+}
+
+.sort-bar__city {
+  margin-left: auto;
+  font-size: var(--text-xs);
+  font-weight: 600;
+  color: var(--color-accent);
+  border: var(--rule) solid var(--color-accent);
+  padding: 3px 10px;
+  border-radius: var(--radius-sm);
+  background: var(--color-primary-soft);
 }
 
 .article-grid {

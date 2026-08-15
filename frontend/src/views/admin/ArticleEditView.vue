@@ -126,6 +126,19 @@
               </el-checkbox>
             </el-checkbox-group>
           </el-form-item>
+          <el-form-item label="城市（同城搜索使用）" prop="city">
+            <el-select
+              v-model="form.city"
+              placeholder="选择城市（留空表示全国/不限定）"
+              clearable
+              filterable
+              allow-create
+              default-first-option
+              class="rail-select"
+            >
+              <el-option v-for="c in cityPreset" :key="c" :label="c" :value="c" />
+            </el-select>
+          </el-form-item>
         </section>
 
         <section class="edit-card">
@@ -302,6 +315,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Back, MagicStick } from '@element-plus/icons-vue'
 import { articleApi, categoryApi, channelApi, smartCollectApi } from '../../api'
+import { CITY_PRESET } from '../../stores/city'
 import AIAssistDrawer from '../../components/AIAssistDrawer.vue'
 import RichTextEditor from '../../components/RichTextEditor.vue'
 import ResourcePicker from '../../components/ResourcePicker.vue'
@@ -313,6 +327,7 @@ const isEdit = Boolean(route.params.id)
 const formRef = ref()
 const categories = ref([])
 const channels = ref([])
+const cityPreset = CITY_PRESET
 const saving = ref(false)
 const submitting = ref(false)
 const previewMode = ref(false)
@@ -329,6 +344,7 @@ const form = reactive({
   cover_url: '',
   category_ids: [],
   channel_ids: [],
+  city: '',
   content: '',
   content_source: '',
 })
@@ -379,6 +395,7 @@ onMounted(async () => {
         content_source: detail.content_source || '',
         category_ids: detail.categories.map((c) => c.id),
         channel_ids: (detail.channels || []).map((c) => c.id),
+        city: detail.city || '',
       })
       articleStatus.value = detail.status
       smartCollectReview.value = detail.smart_collect || null
@@ -481,6 +498,7 @@ async function save(submitReview) {
       content_source: form.content_source || stripHtml(form.content),
       category_ids: form.category_ids,
       channel_ids: form.channel_ids,
+      city: form.city || '',
     }
     const res = isEdit
       ? await articleApi.update(route.params.id, payload)

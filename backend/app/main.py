@@ -16,7 +16,7 @@ from .database import Base, engine, ensure_database, ensure_schema_compat
 from .routers import (
     admin_behavior, articles, auth, categories, channels, comments, dify, events, history,
     interactions, points, portal, resources, reviews, settings as settings_router, stats, users, ai_assist,
-    embeddings, smart_collect,
+    embeddings, preferences, smart_collect,
 )
 
 
@@ -63,6 +63,7 @@ api_router.include_router(interactions.router)
 api_router.include_router(resources.router)
 api_router.include_router(portal.router)
 api_router.include_router(events.router)
+api_router.include_router(preferences.router)
 api_router.include_router(history.router)
 api_router.include_router(comments.router)
 api_router.include_router(comments.admin_router)
