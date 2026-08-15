@@ -12,23 +12,6 @@ from ..schemas.smart_collect import SearchResult, SmartCollectSearchResponse
 TAVILY_SEARCH_URL = "https://api.tavily.com/search"
 SNIPPET_MAX_LENGTH = 300
 
-# 中文新闻渠道白名单：news 主题下 Tavily 的 country 参数不生效，改用域名白名单。
-CHINESE_NEWS_DOMAINS = [
-    "xinhuanet.com",
-    "people.com.cn",
-    "gmw.cn",
-    "chinanews.com.cn",
-    "chinadaily.com.cn",
-    "cctv.com",
-    "thepaper.cn",
-    "sina.com.cn",
-    "163.com",
-    "qq.com",
-    "sohu.com",
-    "yicai.com",
-    "caixin.com",
-]
-
 # 仅过滤独占一行、语义明确的通用网页控件文字，避免针对具体网站写规则。
 GENERIC_NOISE_LABELS = frozenset(
     {
@@ -146,7 +129,7 @@ class SearchService:
             "include_raw_content": False,
             "include_usage": True,
             "auto_parameters": False,
-            "include_domains": CHINESE_NEWS_DOMAINS,
+            "country": "china",
         }
         headers = {"Authorization": f"Bearer {self.api_key}"}
 

@@ -7,11 +7,7 @@ import httpx
 from pydantic import ValidationError
 
 from app.schemas.smart_collect import SmartCollectSearchRequest
-from app.services.search_service import (
-    CHINESE_NEWS_DOMAINS,
-    SearchService,
-    SearchTimeoutError,
-)
+from app.services.search_service import SearchService, SearchTimeoutError
 
 
 class SmartCollectSchemaTests(unittest.TestCase):
@@ -33,7 +29,7 @@ class SearchServiceTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(payload["topic"], "news")
             self.assertIs(payload["include_answer"], False)
             self.assertIs(payload["include_raw_content"], False)
-            self.assertEqual(payload["include_domains"], CHINESE_NEWS_DOMAINS)
+            self.assertEqual(payload["country"], "china")
             return httpx.Response(
                 200,
                 json={
