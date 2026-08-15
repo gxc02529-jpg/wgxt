@@ -3,6 +3,7 @@
 import hashlib
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from sqlalchemy import update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -32,9 +33,13 @@ def like(article_id: int, request: Request, db: Session = Depends(get_db), user:
     exists = db.query(UserAction).filter_by(user_id=user.id, article_id=article_id, action_type="like").first()
     if not exists:
         db.add(UserAction(user_id=user.id, article_id=article_id, action_type="like"))
-        article.like_count += 1
+        # bulk update 累加计数，避免触发 updated_at 刷新
+        db.execute(
+            update(Article).where(Article.id == article.id).values(like_count=Article.like_count + 1, updated_at=Article.updated_at)
+        )
         record_event(db, event_type="like", article_id=article_id, user_id=user.id, request=request)
         db.commit()
+        db.refresh(article)
         return {"message": "点赞成功", "liked": True, "like_count": article.like_count}
     return {"message": "已点过赞", "liked": True, "like_count": article.like_count}
 
@@ -45,9 +50,13 @@ def unlike(article_id: int, db: Session = Depends(get_db), user: User = Depends(
     if action:
         article = db.get(Article, article_id)
         if article and article.like_count > 0:
-            article.like_count -= 1
+            db.execute(
+                update(Article).where(Article.id == article.id).values(like_count=Article.like_count - 1, updated_at=Article.updated_at)
+            )
         db.delete(action)
         db.commit()
+        if article:
+            db.refresh(article)
         return {"message": "已取消点赞", "liked": False, "like_count": article.like_count if article else 0}
     return {"message": "尚未点赞", "liked": False}
 
@@ -58,9 +67,13 @@ def favorite(article_id: int, request: Request, db: Session = Depends(get_db), u
     exists = db.query(UserAction).filter_by(user_id=user.id, article_id=article_id, action_type="favorite").first()
     if not exists:
         db.add(UserAction(user_id=user.id, article_id=article_id, action_type="favorite"))
-        article.favorite_count += 1
+        # bulk update 累加计数，避免触发 updated_at 刷新
+        db.execute(
+            update(Article).where(Article.id == article.id).values(favorite_count=Article.favorite_count + 1, updated_at=Article.updated_at)
+        )
         record_event(db, event_type="favorite", article_id=article_id, user_id=user.id, request=request)
         db.commit()
+        db.refresh(article)
         return {"message": "收藏成功", "favorited": True, "favorite_count": article.favorite_count}
     return {"message": "已收藏", "favorited": True, "favorite_count": article.favorite_count}
 
@@ -71,9 +84,13 @@ def unfavorite(article_id: int, db: Session = Depends(get_db), user: User = Depe
     if action:
         article = db.get(Article, article_id)
         if article and article.favorite_count > 0:
-            article.favorite_count -= 1
+            db.execute(
+                update(Article).where(Article.id == article.id).values(favorite_count=Article.favorite_count - 1, updated_at=Article.updated_at)
+            )
         db.delete(action)
         db.commit()
+        if article:
+            db.refresh(article)
         return {"message": "已取消收藏", "favorited": False, "favorite_count": article.favorite_count if article else 0}
     return {"message": "尚未收藏", "favorited": False}
 
@@ -122,9 +139,13 @@ def share(
         if not exists:
             try:
                 db.add(UserAction(user_id=user.id, article_id=article_id, action_type="share"))
-                article.share_count += 1
+                # bulk update 累加计数，避免触发 updated_at 刷新
+                db.execute(
+                    update(Article).where(Article.id == article.id).values(share_count=Article.share_count + 1, updated_at=Article.updated_at)
+                )
                 record_event(db, event_type="share", article_id=article_id, user_id=user.id, request=request)
                 db.commit()
+                db.refresh(article)
             except IntegrityError:
                 db.rollback()
                 already_shared = True
@@ -147,9 +168,13 @@ def share(
                     article_id=article_id,
                     action_type="share",
                 ))
-                article.share_count += 1
+                # bulk update 累加计数，避免触发 updated_at 刷新
+                db.execute(
+                    update(Article).where(Article.id == article.id).values(share_count=Article.share_count + 1, updated_at=Article.updated_at)
+                )
                 record_event(db, event_type="share", article_id=article_id, request=request)
                 db.commit()
+                db.refresh(article)
             except IntegrityError:
                 db.rollback()
                 already_shared = True

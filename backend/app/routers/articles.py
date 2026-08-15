@@ -24,6 +24,7 @@ from ..models.view_history import ViewHistory
 from ..schemas.article import ArticleIn
 from ..services import embedding_service
 from ..services.article_import_service import import_excel
+from ..services.recommendation_service import recommend_articles
 from ..services.settings_service import get_setting
 from ..services.text_utils import strip_html
 
@@ -101,7 +102,7 @@ def my_articles(
     status: str | None = Query(default=None, description="按状态筛选"),
     keyword: str | None = Query(default=None, description="标题/摘要关键词"),
     category_id: int | None = Query(default=None, description="按栏目筛选"),
-    sort_by: str = Query(default="updated_at", pattern=SORT_BY_PATTERN, description="排序字段"),
+    sort_by: str = Query(default="created_at", pattern=SORT_BY_PATTERN, description="排序字段"),
     sort_order: str = Query(default="desc", pattern="^(asc|desc)$", description="排序方向"),
     page: int = 1,
     page_size: int = 10,
@@ -119,7 +120,7 @@ def my_articles(
     if category_id:
         query = query.join(article_categories, Article.id == article_categories.c.article_id) \
                      .filter(article_categories.c.category_id == category_id)
-    sort_column = ADMIN_SORT_FIELDS.get(sort_by, Article.updated_at)
+    sort_column = ADMIN_SORT_FIELDS.get(sort_by, Article.created_at)
     query = query.order_by(sort_column.desc() if sort_order == "desc" else sort_column.asc())
     rows, total = paginate(query, page, page_size)
     return {"items": [a.to_dict() for a in rows], "total": total, "page": page, "page_size": page_size}
@@ -130,7 +131,7 @@ def admin_articles(
     status: str | None = Query(default=None),
     keyword: str | None = Query(default=None),
     category_id: int | None = Query(default=None),
-    sort_by: str = Query(default="updated_at", pattern=SORT_BY_PATTERN, description="排序字段"),
+    sort_by: str = Query(default="created_at", pattern=SORT_BY_PATTERN, description="排序字段"),
     sort_order: str = Query(default="desc", pattern="^(asc|desc)$", description="排序方向"),
     page: int = 1,
     page_size: int = 10,
@@ -145,11 +146,28 @@ def admin_articles(
     if category_id:
         query = query.join(article_categories, Article.id == article_categories.c.article_id) \
                      .filter(article_categories.c.category_id == category_id)
-    # 服务端排序：白名单字段 + 方向，默认 updated_at 降序（保持旧行为）
-    sort_column = ADMIN_SORT_FIELDS.get(sort_by, Article.updated_at)
+    # 服务端排序：白名单字段 + 方向，默认 created_at 降序（新文稿优先）
+    sort_column = ADMIN_SORT_FIELDS.get(sort_by, Article.created_at)
     query = query.order_by(sort_column.desc() if sort_order == "desc" else sort_column.asc())
     rows, total = paginate(query, page, page_size)
     return {"items": [a.to_dict() for a in rows], "total": total, "page": page, "page_size": page_size}
+
+
+@router.get("/recommend", summary="用户个性化推荐（可选登录，默认 8 篇）")
+def user_recommend_articles(
+    limit: int = Query(default=8, ge=1, le=20, description="返回推荐文稿数量"),
+    db: Session = Depends(get_db),
+    user: User | None = Depends(get_optional_user),
+):
+    """按用户观看偏好 + 新鲜度/热度 + 随机扰动推荐已发布文稿
+
+    登录用户会排除已观看与已标记不感兴趣的文稿；未登录用户走通用推荐。
+    算法详见 docs/article_recommend_spec.md。
+    """
+    items = recommend_articles(db, user, limit)
+    if not items:
+        raise HTTPException(400, "暂无已发布文稿可推荐")
+    return {"items": [a.to_dict() for a in items], "total": len(items)}
 
 
 @router.get("/{article_id}", summary="文稿详情（未发布稿仅作者/系统管理员/审核管理员可见）")

@@ -110,7 +110,7 @@
         :data="articles"
         v-loading="loading"
         style="width: 100%"
-        :default-sort="{ prop: 'updated_at', order: 'descending' }"
+        :default-sort="{ prop: 'created_at', order: 'descending' }"
         @selection-change="handleSelectionChange"
         @sort-change="handleSortChange"
       >
@@ -156,6 +156,7 @@
         <el-table-column label="点赞" prop="like_count" width="90" sortable="custom" />
         <el-table-column label="收藏" prop="favorite_count" width="90" sortable="custom" />
         <el-table-column label="转发" prop="share_count" width="90" sortable="custom" />
+        <el-table-column label="创建时间" prop="created_at" width="165" sortable="custom" />
         <el-table-column label="更新时间" prop="updated_at" width="165" sortable="custom" />
         <el-table-column label="操作" width="250" fixed="right">
           <template #default="{ row }">
@@ -230,8 +231,8 @@ const loading = ref(false)
 const filters = reactive({ keyword: '', status: '', category_id: '' })
 // 栏目下拉数据（进入页面时加载）
 const categories = ref([])
-// 服务端排序：与后端 sort_by/sort_order 对应，默认更新时间降序
-const sort = reactive({ by: 'updated_at', order: 'desc' })
+// 服务端排序：与后端 sort_by/sort_order 对应，默认创建时间降序
+const sort = reactive({ by: 'created_at', order: 'desc' })
 const selectedRows = ref([])
 // 批量导入
 const importDialogVisible = ref(false)
@@ -339,10 +340,10 @@ function reload() {
   load()
 }
 
-// 列头点击排序（服务端排序）：升序/降序/清空（第三击恢复默认更新时间降序）
+// 列头点击排序（服务端排序）：升序/降序/清空（第三击恢复默认创建时间降序）
 function handleSortChange({ prop, order }) {
   if (!order) {
-    sort.by = 'updated_at'
+    sort.by = 'created_at'
     sort.order = 'desc'
   } else {
     sort.by = prop

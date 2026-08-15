@@ -142,20 +142,38 @@ def main():
         # 非法排序字段应被参数校验拦截（422）
         r = client.get(f"{BASE}/articles/admin", headers=admin_h, params={"sort_by": "title"})
         assert r.status_code == 422, "非法排序字段未拦截"
-        print("[5.1] 后台列表栏目筛选 + 服务端排序 OK")
+        # 默认排序：创建时间降序（新文稿优先）
+        r = client.get(f"{BASE}/articles/admin", headers=admin_h, params={"page_size": 5})
+        default_times = [a["created_at"] for a in r.json()["items"]]
+        assert default_times == sorted(default_times, reverse=True), f"默认应按创建时间倒序: {default_times}"
+        print("[5.1] 后台列表栏目筛选 + 服务端排序 OK（默认创建时间降序）")
     
     if should_run(6):
-        # 6. 用户观看埋点
+        # 6. 用户观看埋点（view 计数累加不应刷新 updated_at）
+        before_updated = client.get(f"{BASE}/articles/{aid}", headers=admin_h).json()["updated_at"]
         r = client.post(f"{BASE}/events", headers=user_h, json={"event_type": "view", "article_id": aid})
         assert r.json()["ok"], "观看埋点失败"
-        print("[6] 观看埋点 OK")
+        after_updated = client.get(f"{BASE}/articles/{aid}", headers=admin_h).json()["updated_at"]
+        assert after_updated == before_updated, f"view 不应刷新 updated_at: {before_updated} -> {after_updated}"
+        print("[6] 观看埋点 OK（updated_at 不变）")
+        # 观看时长累计上限：每篇每用户 30 分钟（1800 秒），达上限后不再累计
+        for _ in range(3):
+            r = client.post(f"{BASE}/history/{aid}/duration", headers=user_h, json={"seconds": 600})
+            assert r.status_code == 200, f"时长上报失败: {r.text}"
+        assert r.json()["watch_seconds"] == 1800 and r.json()["reached_limit"] is True
+        r = client.post(f"{BASE}/history/{aid}/duration", headers=user_h, json={"seconds": 600})
+        assert r.json()["watch_seconds"] == 1800 and r.json()["reached_limit"] is True, f"达上限后不应再累计: {r.text}"
+        print("[6] 观看时长 30 分钟上限 OK")
     
     if should_run(7):
-        # 7. 点赞 / 收藏 / 转发
+        # 7. 点赞 / 收藏 / 转发（计数更新不应刷新 updated_at）
+        before_updated = client.get(f"{BASE}/articles/{aid}", headers=admin_h).json()["updated_at"]
         for ep in ("like", "favorite", "share"):
             r = client.post(f"{BASE}/interactions/{ep}?article_id={aid}", headers=user_h)
             assert r.status_code == 200, f"{ep} 失败: {r.text}"
             print(f"[7] {ep} OK ->", r.json()["message"])
+        after_updated = client.get(f"{BASE}/articles/{aid}", headers=admin_h).json()["updated_at"]
+        assert after_updated == before_updated, f"互动计数不应刷新 updated_at: {before_updated} -> {after_updated}"
     
         r = client.get(f"{BASE}/interactions/status?article_id={aid}", headers=user_h)
         assert r.json() == {"liked": True, "favorited": True, "disliked": False}, f"互动状态异常: {r.text}"
@@ -612,7 +630,50 @@ def main():
         assert res["total"] > 0, "向量化数量应大于 0"
         assert res["stats"]["by_version"].get("BAAI_bge-small-zh", 0) >= res["total"], "向量化记录未入库"
         print(f"[20] 文稿向量化入库 OK  total={res['total']} model={res['model_version']}")
-    
+
+    if should_run(21):
+        # 21. 用户个性化推荐：未登录通用推荐；登录后排除已观看/不感兴趣；limit 边界
+        r = client.get(f"{BASE}/articles/recommend")
+        assert r.status_code == 200, f"未登录推荐失败: {r.text}"
+        anon_items = r.json()["items"]
+        assert anon_items, "推荐结果不应为空"
+        assert r.json()["total"] == len(anon_items) and len(anon_items) <= 8, f"推荐数量异常: {r.text}"
+        ids = [a["id"] for a in anon_items]
+        assert len(ids) == len(set(ids)), "推荐结果不应包含重复文稿"
+        assert all(a["status"] == "published" for a in anon_items), "推荐必须是已发布文稿"
+        print(f"[21] 未登录通用推荐 OK  items={len(anon_items)}")
+
+        # limit 参数：指定数量与越界校验
+        r = client.get(f"{BASE}/articles/recommend", params={"limit": 3})
+        assert r.status_code == 200 and 1 <= len(r.json()["items"]) <= 3, f"limit=3 推荐异常: {r.text}"
+        r = client.get(f"{BASE}/articles/recommend", params={"limit": 0})
+        assert r.status_code == 422, f"limit=0 应 422: {r.text}"
+        r = client.get(f"{BASE}/articles/recommend", params={"limit": 21})
+        assert r.status_code == 422, f"limit=21 应 422: {r.text}"
+        print("[21] 推荐 limit 参数/越界校验 OK")
+
+        # 登录用户：观看一篇后，推荐不应再包含该篇
+        watch_target = ids[0]
+        r = client.post(f"{BASE}/events", headers=user_h, json={"event_type": "view", "article_id": watch_target})
+        assert r.json().get("ok") is True, f"观看埋点失败: {r.text}"
+        r = client.get(f"{BASE}/articles/recommend", headers=user_h, params={"limit": 20})
+        assert r.status_code == 200 and r.json()["items"], f"登录推荐失败: {r.text}"
+        assert all(a["id"] != watch_target for a in r.json()["items"]), "推荐不应包含已观看文稿"
+        print(f"[21] 登录推荐排除已观看 OK  watch_target={watch_target}")
+
+        # 标记不感兴趣后排除，再取消恢复（不污染演示数据）
+        if len(ids) >= 2:
+            dislike_target = ids[1]
+            r = client.post(f"{BASE}/interactions/dislike?article_id={dislike_target}", headers=user_h)
+            assert r.status_code == 200, f"标记不感兴趣失败: {r.text}"
+            r = client.get(f"{BASE}/articles/recommend", headers=user_h, params={"limit": 20})
+            assert all(a["id"] != dislike_target for a in r.json()["items"]), "推荐不应包含不感兴趣文稿"
+            r = client.delete(f"{BASE}/interactions/dislike?article_id={dislike_target}", headers=user_h)
+            assert r.status_code == 200, f"取消不感兴趣失败: {r.text}"
+            print(f"[21] 登录推荐排除不感兴趣 OK  dislike_target={dislike_target}")
+        else:
+            print("[21] 候选不足，跳过不感兴趣排除断言")
+
     print("\nALL SMOKE TESTS PASSED")
 
 

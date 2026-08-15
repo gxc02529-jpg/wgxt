@@ -78,32 +78,97 @@ npm run dev
 - **排查**：终端/日志显示乱码不一定是数据乱码（可能是控制台显示编码问题）。
   判断数据是否真乱码：用 `ascii()` / `repr()` 输出转义码点检查，或直接用 UTF-8 文件脚本读取数据库原值。
 
-## 开发流程规范（Skills 驱动，所有新功能/改动必须遵守）
+## 开发方法论（Skills 驱动，所有开发任务强制遵守）
 
-本项目的功能开发统一按以下流程执行，任何 AI 助手或开发者都应遵循：
+本方法论是项目功能开发的唯一执行流程。任何新功能、改动、bug 修复都必须按此执行；
+每个阶段都有触发条件、必调 skill、产出物与退出标准，未达标不得进入下一阶段。
 
-1. **先规格后代码**：新功能、跨模块改动、涉及数据表/接口变动的任务，必须先写规格文档到 `docs/`（结构参考 `spec-driven-development`：目标、数据结构、接口契约、前端交互、成功标准），规格经确认后再动手。
-2. **契约先行**：前后端接口先定契约（路径、请求/响应字段、错误语义、分页格式），再分别实现，遵循 `api-and-interface-design` 的 REST 规范（资源复数命名、PATCH 增量更新、分页、边界校验）。
-3. **增量实现**：按"后端模型 → 接口 → 前端页面 → 验证"的纵向切片逐个提交，每片保持系统可运行（`incremental-implementation`）；单次改动超过约 5 个文件或 100 行前必须完成当前切片验证。
-4. **测试驱动**：后端新增接口在 `backend/smoke_test.py` 增加对应冒烟断言；修复 bug 必须先写复现用例再修（`test-driven-development`）。前端用浏览器 DevTools 运行时验证（`browser-testing-with-devtools` / `chrome-devtools`）。
-5. **安全默认**：所有用户输入在接口边界校验并参数化查询；评论等 UGC 内容按纯文本处理，前端渲染必须转义，禁止直接 `v-html`（`security-and-hardening`）。
-6. **前端质量**：新页面/组件遵循项目设计令牌（`frontend/src/styles/tokens.css`）与门户主题体系（`themes.css`），不引入"AI 审美"默认样式；可参考 `frontend-ui-engineering`、`ui-ux-pro-max` 的设计规范。
-7. **评审收尾**：实现完成后自查（`code-review-and-quality` 五轴评审 + `code-simplification` 简化），确认无越界改动、无死代码、注释中文、命名与项目一致。
-8. **记录决策**：涉及数据表结构、接口契约、权限模型的决策，在规格文档中同步更新（`documentation-and-adrs`），规格与代码一同维护。
+### 阶段 0：任务分类与上下文装载
 
-常用 skill 映射：
+- **必做**：开始任何开发前，先完整阅读本 `AGENTS.md` 与相关 `docs/` 规格文档，确认任务归属与影响范围。
+- **任务分级**：
+  - **小改动**（≤5 个文件且 ≤100 行、不涉及新表/新接口/权限变化）：可直接进入阶段 4 实现，但阶段 5/6/7 不可跳过。
+  - **中改动**（涉及新接口、新数据表、跨模块、状态机变更）：完整走阶段 2→7。
+  - **大功能/需求模糊**：先走阶段 1 澄清，再阶段 2→7。
+- **skill**：`using-agent-skills` 确认本任务适用的 skill 组合，避免遗漏或重复使用。
 
-| 场景 | 使用的 skill |
-| --- | --- |
-| 需求不明确/新功能 | `interview-me` → `spec-driven-development` |
-| 接口/模块边界设计 | `api-and-interface-design` |
-| 任务拆解与规划 | `planning-and-task-breakdown` |
-| 后端/前端实现 | `incremental-implementation` + `test-driven-development` |
-| 用户输入/登录/权限 | `security-and-hardening` |
-| 前端 UI 实现 | `frontend-ui-engineering`（可配合 `ui-ux-pro-max` 取设计参考） |
-| 浏览器运行验证 | `browser-testing-with-devtools` / `chrome-devtools` |
-| 代码评审 | `code-review-and-quality` + `code-simplification` |
-| 上线/发布 | `shipping-and-launch` |
+### 阶段 1：需求澄清
+
+- **触发**：需求模糊、存在影响结果的决策点、用户以"想一下/可不可以/你觉得呢"等开放口吻提问。
+- **调用**：`interview-me`（一次一问，直到约 95% 置信度）；想法尚未定型时先用 `idea-refine` 做发散与收敛。
+- **产出**：无歧义的需求结论，可直接写入阶段 2 的规格。
+- **退出标准**：没有未决的关键问题，需求结论可以被写成规格。
+
+### 阶段 2：规格设计（先规格后代码）
+
+- **触发**：新功能、跨模块改动、涉及数据表/接口/权限模型的任何任务。
+- **调用**：`spec-driven-development` 写 `docs/<功能名>_spec.md`，结构至少包含：目标、数据结构、接口契约、前端交互、成功标准。
+- **接口契约**：涉及接口时同步调用 `api-and-interface-design`（REST 资源复数命名、PATCH 增量更新、分页格式、边界校验），契约先定再实现。
+- **数据/权限**：涉及新表、审核状态机、权限模型时，在规格中写明并与"代码约定"第 3/7 条保持一致。
+- **产出**：`docs/` 下的中文规格文档。
+- **退出标准**：规格落盘，接口字段与错误语义明确，核心决策有记录。
+
+### 阶段 3：任务拆解
+
+- **调用**：`planning-and-task-breakdown`。
+- **产出**：纵向切片清单（后端模型 → 接口 → 前端页面 → 验证），每片保持系统可运行。
+- **退出标准**：切片顺序明确，每片都能独立验证。
+
+### 阶段 4：增量实现
+
+- **后端**：`incremental-implementation` + `test-driven-development`（先写失败用例/断言再实现）。
+- **前端**：`frontend-ui-engineering`（遵循 `frontend/src/styles/tokens.css` 与 `themes.css` 设计令牌）；需要风格/组件参考时配 `ui-ux-pro-max`。
+- **安全**：任何用户输入、认证授权、存储、UGC 场景调用 `security-and-hardening`（参数化查询、渲染转义、禁止直接 `v-html`）。
+- **性能**：涉及查询、大列表、N+1 场景时调用 `performance-optimization`。
+- **切片节奏**：单次改动超过约 5 个文件或 100 行前，必须完成当前切片验证。
+- **退出标准**：当前切片完成，系统可运行。
+
+### 阶段 5：验证（测试驱动）
+
+- **后端**：新增接口必须在 `backend/smoke_test.py` 增加对应冒烟断言并跑通；bug 修复先写复现用例再修（`test-driven-development`）。
+- **前端**：模型无视觉能力，禁止用截图判断效果；必须用 `browser-testing-with-devtools` / `chrome-devtools` / `chrome-devtools-cli` 做 DOM 审核：DOM 结构与类名挂载、computed style、CSS 变量实际取值、响应式断点布局、控制台报错。
+- **专项**：`a11y-debugging`（可访问性）、`debug-optimize-lcp`（首屏性能）、`memory-leak-debugging`（内存/长列表）。
+- **退出标准**：smoke 全绿，DOM 审核通过，控制台无相关报错。
+
+### 阶段 6：评审收尾
+
+- **调用**：`code-review-and-quality`（正确性/安全/性能/可维护性/一致性五轴）+ `code-simplification`（去重、删死代码）。
+- **关键决策**：高风险的架构/安全/数据决策额外走 `doubt-driven-development` 对抗式审查。
+- **检查项**：无越界改动、无死代码、注释中文、命名与项目一致、规格与代码同步。
+- **退出标准**：自查通过。
+
+### 阶段 7：记录与提交
+
+- **调用**：`documentation-and-adrs` 同步更新规格/ADR；`git-workflow-and-versioning` 控制提交粒度与提交信息规范。
+- **上线**：部署前调用 `shipping-and-launch` 走发布清单。
+- **退出标准**：文档与代码一致，变更提交完成。
+
+### Skill 速查表
+
+| 场景 | 调用 skill | 阶段 |
+| --- | --- | --- |
+| 任务分类/确认适用 skill | `using-agent-skills` | 0 |
+| 需求不明确/关键决策 | `interview-me` → `idea-refine` | 1 |
+| 规格设计 | `spec-driven-development` | 2 |
+| 接口契约设计 | `api-and-interface-design` | 2 |
+| 任务拆解 | `planning-and-task-breakdown` | 3 |
+| 增量实现 | `incremental-implementation` + `test-driven-development` | 4 |
+| 安全加固 | `security-and-hardening` | 4 |
+| 性能优化 | `performance-optimization` | 4 |
+| 前端 UI 实现 | `frontend-ui-engineering`（配合 `ui-ux-pro-max`） | 4 |
+| 后端冒烟/复现 | `test-driven-development` + `backend/smoke_test.py` | 5 |
+| 浏览器 DOM 审核 | `browser-testing-with-devtools` / `chrome-devtools` / `chrome-devtools-cli` | 5 |
+| 无障碍/首屏/内存 | `a11y-debugging` / `debug-optimize-lcp` / `memory-leak-debugging` | 5 |
+| 代码评审/简化 | `code-review-and-quality` + `code-simplification` | 6 |
+| 高风险决策审查 | `doubt-driven-development` | 6 |
+| 文档/ADR 记录 | `documentation-and-adrs` | 7 |
+| Git 提交规范 | `git-workflow-and-versioning` | 7 |
+| 上线发布 | `shipping-and-launch` | 7 |
+
+### 降级规则
+
+- 若某个 skill 无法加载或不可用，不得跳过该阶段要求；按同阶段的人工等效步骤执行
+  （如手写规格、手写 smoke 断言、手工 DOM 检查），并在交付说明中注明缺失的 skill 及补偿方式。
 
 ## 生产部署注意
 

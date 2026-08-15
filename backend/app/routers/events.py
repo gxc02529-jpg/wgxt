@@ -5,6 +5,7 @@
 这里主要承载「进入文稿详情页观看」等页面级埋点。
 """
 from fastapi import APIRouter, Depends, Request
+from sqlalchemy import update
 from sqlalchemy.orm import Session
 
 from ..core.deps import get_optional_user
@@ -40,7 +41,10 @@ def report_event(
 
     # view 埋点同时累加浏览量（观看计数）
     if body.event_type == "view" and article:
-        article.view_count += 1
+        # bulk update 累加浏览量，避免触发 updated_at 刷新
+        db.execute(
+            update(Article).where(Article.id == article.id).values(view_count=Article.view_count + 1, updated_at=Article.updated_at)
+        )
 
     db.commit()
     return {"ok": True}

@@ -19,6 +19,9 @@ from ..schemas.history import DurationIn
 
 router = APIRouter(prefix="/history", tags=["观看历史"])
 
+# 每个用户对单篇文稿的观看时长累计上限（秒）：30 分钟，防止页面挂机/刷新无限刷时长
+MAX_WATCH_SECONDS_PER_ARTICLE = 1800
+
 
 @router.get("", summary="我的观看历史（分页，按最近观看时间倒序）")
 def my_history(
@@ -53,7 +56,7 @@ def report_duration(
     user: User = Depends(get_current_user),
 ):
     """累计观看时长：同一用户同一文稿累加 watch_seconds，并记录上报次数。
-    前端单次会话最多上报 600 秒（10 分钟），后端同样限制单次 ≤600，防止刷时长。
+    单次上报上限 600 秒（10 分钟），累计上限 1800 秒（30 分钟）；达到累计上限后继续上报不再累计，防止页面挂机/刷新无限刷时长。
     """
     article = db.get(Article, article_id)
     if not article:
@@ -61,9 +64,21 @@ def report_duration(
     history = db.query(ViewHistory).filter_by(user_id=user.id, article_id=article_id).first()
     if not history:
         # 兜底：详情页未产生历史记录时直接创建一条（正常流程由文章详情接口创建）
-        history = ViewHistory(user_id=user.id, article_id=article_id, viewed_at=datetime.now())
+        history = ViewHistory(
+            user_id=user.id, article_id=article_id, viewed_at=datetime.now(),
+            watch_seconds=0, watch_count=0,
+        )
         db.add(history)
-    history.watch_seconds += body.seconds
+    # 累计上限：达到 30 分钟后不再累计，防止页面挂机/刷新无限刷时长
+    if history.watch_seconds >= MAX_WATCH_SECONDS_PER_ARTICLE:
+        return {
+            "message": "该文稿观看时长已达上限（30 分钟）",
+            "watch_seconds": history.watch_seconds,
+            "watch_count": history.watch_count,
+            "reached_limit": True,
+        }
+    remaining = MAX_WATCH_SECONDS_PER_ARTICLE - history.watch_seconds
+    history.watch_seconds += min(body.seconds, remaining)
     history.watch_count += 1
     history.viewed_at = datetime.now()
     db.commit()
@@ -71,4 +86,5 @@ def report_duration(
         "message": "已记录观看时长",
         "watch_seconds": history.watch_seconds,
         "watch_count": history.watch_count,
+        "reached_limit": history.watch_seconds >= MAX_WATCH_SECONDS_PER_ARTICLE,
     }
