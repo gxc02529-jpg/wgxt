@@ -309,6 +309,11 @@ class EmbeddingService:
                     model = self._model_loader(self.model_name)
                 else:
                     # 延迟导入确保未安装真实模型依赖时，应用和Fake测试仍可启动。
+                    # 先预加载pyarrow，避免部分Windows环境sentence-transformers导入时原生库崩溃。
+                    try:
+                        import pyarrow  # noqa: F401
+                    except ImportError:
+                        pass
                     from sentence_transformers import SentenceTransformer
 
                     model = SentenceTransformer(self.model_name, device=resolved_device)
