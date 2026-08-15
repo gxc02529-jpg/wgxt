@@ -59,6 +59,7 @@ python run.py            # 启动 http://localhost:8000，接口文档 /docs
 > （utf8mb4，完整支持中文与 emoji），随后建表、做表结构兼容迁移，并写入种子数据与系统配置。
 > 若 MySQL 账号没有建库权限，请先手动执行：
 > `CREATE DATABASE wengaofabu DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;`
+> 注意文github上面缺少了两个文件模型，请自行从minio上面下载对应的模型文件
 
 ### 2. 前端
 
