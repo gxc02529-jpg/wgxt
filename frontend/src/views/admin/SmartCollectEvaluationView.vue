@@ -342,4 +342,49 @@ onMounted(loadEvaluation)
   font-size: var(--text-xs);
   font-weight: 700;
 }
+
+/* 缩放安全：小屏/浏览器缩放时不允许横向溢出 */
+.evaluation-page {
+  width: 100%;
+  min-width: 0;
+  overflow-x: hidden;
+  box-sizing: border-box;
+}
+
+.page-head {
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.page-head > div {
+  min-width: 0;
+}
+
+.page-title,
+.page-description {
+  overflow-wrap: anywhere;
+}
+
+.overview-grid {
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+}
+
+.overview-card,
+.section-card,
+.outlier-card,
+.outlier-item,
+.agreement-item {
+  min-width: 0;
+}
+
+.section-card :deep(.el-table) {
+  width: 100%;
+  min-width: 0;
+  overflow-x: auto;
+}
+
+.outlier-meta {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
 </style>

@@ -1701,4 +1701,136 @@ onMounted(loadTask)
     padding: var(--space-4);
   }
 }
+
+/* 缩放安全：小屏/浏览器缩放时不允许横向溢出 */
+.task-detail-page {
+  width: 100%;
+  min-width: 0;
+  overflow-x: hidden;
+  box-sizing: border-box;
+}
+
+.page-head {
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.page-head > div {
+  min-width: 0;
+}
+
+.page-title {
+  overflow-wrap: anywhere;
+}
+
+.workflow-steps {
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+}
+
+.workflow-step {
+  min-width: 0;
+}
+
+.workflow-step strong,
+.workflow-step small {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.task-card,
+.events-card,
+.similarity-card {
+  width: 100%;
+  min-width: 0;
+}
+
+.task-card :deep(.el-descriptions),
+.events-card :deep(.el-table),
+.similarity-card :deep(.el-table) {
+  width: 100%;
+  min-width: 0;
+  overflow-x: auto;
+}
+
+.events-head,
+.event-item__head,
+.event-actions,
+.synthesis-result__head,
+.synthesis-review-actions,
+.ungrouped-head,
+.similarity-head,
+.similarity-score,
+.result-item__head,
+.result-meta,
+.result-card-head {
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.event-item,
+.event-clue-item,
+.synthesis-version,
+.synthesis-result,
+.similarity-item,
+.similarity-clues > div,
+.result-item {
+  min-width: 0;
+}
+
+.event-actions {
+  width: 100%;
+  justify-content: flex-start;
+}
+
+.event-clue-item {
+  gap: var(--space-3);
+}
+
+.synthesis-result__head span {
+  text-align: left;
+}
+
+.similarity-clues {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.result-list,
+.similarity-list,
+.event-list,
+.ungrouped-list {
+  min-width: 0;
+}
+
+.result-item__head .title-line {
+  min-width: 0;
+}
+
+.result-item__head h2 {
+  overflow-wrap: anywhere;
+}
+
+.result-snippet,
+.synthesis-summary,
+.content-text,
+.evidence-source-content {
+  overflow-wrap: anywhere;
+}
+
+:global(.el-dialog) {
+  max-width: calc(100vw - 24px);
+}
+
+:global(.el-dialog .el-dialog__body) {
+  overflow-x: auto;
+}
+
+@media (max-width: 640px) {
+  .similarity-clues {
+    grid-template-columns: 1fr;
+  }
+
+  .event-actions :deep(.el-button) {
+    flex: 1 1 auto;
+  }
+}
 </style>

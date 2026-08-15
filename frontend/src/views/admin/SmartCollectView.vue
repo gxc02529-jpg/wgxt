@@ -498,4 +498,63 @@ onBeforeUnmount(() => {
     width: 100% !important;
   }
 }
+
+/* 缩放安全：小屏/浏览器缩放时不允许横向溢出 */
+.smart-collect-page {
+  width: 100%;
+  min-width: 0;
+  overflow-x: hidden;
+  box-sizing: border-box;
+}
+
+.sc-header {
+  flex-wrap: wrap;
+}
+
+.sc-header > div {
+  min-width: 0;
+}
+
+.page-title,
+.page-description {
+  overflow-wrap: anywhere;
+}
+
+.sc-metrics {
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+}
+
+.sc-panel,
+.search-form,
+.query-item {
+  min-width: 0;
+}
+
+.query-item {
+  flex: 1 1 260px;
+}
+
+.sc-panel__head {
+  flex-wrap: wrap;
+}
+
+.history-head {
+  min-width: 0;
+}
+
+.history-actions {
+  flex-wrap: wrap;
+}
+
+.history-panel :deep(.el-table) {
+  width: 100%;
+}
+
+.history-panel :deep(.el-table__inner-wrapper) {
+  overflow-x: auto;
+}
+
+.pagination-wrap {
+  flex-wrap: wrap;
+}
 </style>
