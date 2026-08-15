@@ -167,6 +167,17 @@ def get_modules(db: Session = Depends(get_db)):
     return {"items": [m.to_dict() for m in modules]}
 
 
+@router.get("/modules/admin", summary="获取全部门户模块（含已禁用，管理员，用于后台设置页）")
+def get_all_modules(
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_roles("admin")),
+):
+    """后台门户设置页读取全部模块（前台 /modules 只返回启用的模块，
+    若某模块被关闭则前台接口不再返回，设置页必须能读到它才能重新开启）。"""
+    modules = db.query(PortalModule).order_by(PortalModule.id).all()
+    return {"items": [m.to_dict() for m in modules]}
+
+
 @router.post("/modules", summary="新建门户模块（管理员）")
 def create_module(body: PortalModuleIn, db: Session = Depends(get_db), admin: User = Depends(require_roles("admin"))):
     if db.query(PortalModule).filter(PortalModule.module_key == body.module_key).first():

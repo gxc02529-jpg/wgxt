@@ -12,7 +12,9 @@
         （双方归一化后点积即余弦相似度），KNN 取 top-50。
     ③ 在线精排：_rerank() 目前原样透传 top-50，后续在此接入排序模型
         （特征工程 → 模型打分 → 重排）。
-    ④ 兜底：过滤已观看与不感兴趣后，候选不足 limit 时按热度榜补齐，
+    ④ 探索位：从与用户向量差距最大的候选池中选 1 篇放在列表末尾，
+        避免"信息茧房"（8 篇 = 7 篇相似 + 1 篇探索）；
+    ⑤ 兜底：过滤已观看与不感兴趣后，候选不足时按热度榜补齐，
         最终返回 limit 篇（默认 8）。
 
 用户画像不足时的通用推荐（未登录 / 观看历史 < 20 篇）：
@@ -54,6 +56,8 @@ MIN_HISTORY_FOR_VECTOR = 20
 # 在线召回 KNN 取稿数量（精排前的粗排池）。
 # 精排接入后建议保持 50 左右：太小召回不足，太大精排成本上升。
 RECALL_TOP_K = 50
+# 探索候选池大小：与用户向量相似度最低的 N 篇，用于"反信息茧房"探索位
+EXPLORE_POOL_SIZE = 10
 # 推荐结果最大条数（接口层 Query(le=20) 已约束，这里对内部调用兜底）。
 MAX_LIMIT = 20
 
@@ -277,14 +281,23 @@ def _compute_user_vector(db: Session, user: User) -> np.ndarray | None:
 
 # ---------- 向量召回 / 精排 / 兜底 ----------
 
-def _knn_recall(db: Session, user_vec: np.ndarray, k: int) -> list[int]:
-    """KNN 余弦相似度召回：与内存中全部已发布文稿向量点积，取相似度 top-k。
+def _knn_recall(
+    db: Session,
+    user_vec: np.ndarray,
+    k: int,
+    explore_k: int = EXPLORE_POOL_SIZE,
+) -> tuple[list[int], list[int]]:
+    """KNN 余弦相似度召回：取相似度 top-k 与"最不相似"探索候选池。
 
     输入：
     - user_vec：用户兴趣向量（已 L2 归一化，来自 _compute_user_vector）；
-    - k：召回数量（调用方传 RECALL_TOP_K=50）。
+    - k：召回数量（调用方传 RECALL_TOP_K=50）；
+    - explore_k：探索候选池大小（默认 EXPLORE_POOL_SIZE=10）。
 
-    输出：按相似度降序的文稿 id 列表（含随机扰动），最多 k 个。
+    输出：
+    - top_ids：按相似度降序的文稿 id 列表（含随机扰动），最多 k 个；
+    - explore_ids：与用户向量相似度最低的 explore_k 个文稿 id
+      （使用原始相似度、不加扰动，保证是真正的"差距最大"），供反信息茧房探索位使用。
 
     实现说明：
     1. 向量缓存已由 _recommend_by_vector 主流程同步（冷加载或增量更新），
@@ -292,9 +305,9 @@ def _knn_recall(db: Session, user_vec: np.ndarray, k: int) -> list[int]:
     2. 只对 status = "published" 的文稿计算相似度（缓存含全部文稿，这里过滤）；
     3. 内存矩阵点积：双方均 L2 归一化，点积即余弦相似度，向量化一次算完；
     4. 相似度乘 0.9~1.1 随机扰动，使每次召回集边缘与顺序略有不同；
-    5. np.argsort 取 top-k 并映射回文稿 id。
+    5. np.argsort 分别取 top-k 与最不相似 explore_k，映射回文稿 id。
 
-    边界：若没有任何已发布文稿向量（如尚未跑全量向量化），返回空列表，
+    边界：若没有任何已发布文稿向量（如尚未跑全量向量化），返回两个空列表，
     由 _recommend_by_vector 的热门兜底补齐。
     """
     published_ids = [
@@ -303,14 +316,17 @@ def _knn_recall(db: Session, user_vec: np.ndarray, k: int) -> list[int]:
     ]
     ids = [aid for aid in published_ids if aid in _EMBEDDING_CACHE]
     if not ids:
-        return []
+        return [], []
     matrix = np.stack([_EMBEDDING_CACHE[aid]["vector"] for aid in ids])  # (N, 512)
     sims = matrix @ user_vec
+    # 探索候选：相似度最低的 explore_k 篇（原始相似度，不扰动）
+    explore_order = np.argsort(sims)[:explore_k]
+    explore_ids = [ids[i] for i in explore_order]
     # 随机扰动：让每次召回结果/顺序略有不同
     noise = KNN_NOISE_MIN + KNN_NOISE_SPAN * np.random.random(len(ids))
     sims = sims * noise
     top = np.argsort(-sims)[:k]
-    return [ids[i] for i in top]
+    return [ids[i] for i in top], explore_ids
 
 
 def _rerank(candidate_ids: list[int]) -> list[int]:
@@ -364,18 +380,55 @@ def _fill_by_hot(db: Session, exclude_ids: set[int], need: int) -> list[int]:
     return [aid for aid, _ in scored[:need]]
 
 
+def _pick_explore(
+    db: Session,
+    explore_ids: list[int],
+    excluded: set[int],
+    chosen: set[int],
+) -> int | None:
+    """从"与用户向量差距最大"的候选池中选 1 篇探索内容（反信息茧房）。
+
+    输入：
+    - explore_ids：_knn_recall 返回的相似度最低候选池；
+    - excluded：已观看/不感兴趣的文稿 id；
+    - chosen：已入选推荐列表的文稿 id（避免与相似内容重复）。
+
+    输出：选中的文稿 id；池子被排除/占用后为空则返回 None（调用方不加探索位）。
+
+    实现说明：从剩余候选里按"热度 + 随机扰动"取最高分，保证探索位虽然
+    与用户偏好差距大，但仍是相对热门的文稿，用户不会觉得内容莫名其妙。
+    """
+    pool = [aid for aid in explore_ids if aid not in excluded and aid not in chosen]
+    if not pool:
+        return None
+    candidates = db.query(Article).filter(Article.id.in_(pool)).all()
+    scored = []
+    for a in candidates:
+        hot = (
+            a.view_count * HOT_WEIGHTS["view_count"]
+            + a.like_count * HOT_WEIGHTS["like_count"]
+            + a.favorite_count * HOT_WEIGHTS["favorite_count"]
+            + a.share_count * HOT_WEIGHTS["share_count"]
+        )
+        scored.append((a.id, hot * (NOISE_MIN + NOISE_SPAN * random.random())))
+    scored.sort(key=lambda item: item[1], reverse=True)
+    return scored[0][0] if scored else None
+
+
 def _recommend_by_vector(db: Session, user: User, limit: int) -> list[Article]:
-    """向量召回推荐主流程：用户向量 → KNN top-50 → 精排（预留）→ 过滤 → 兜底。
+    """向量召回推荐主流程：用户向量 → KNN top-50 → 精排（预留）→ 过滤 → 探索位 → 兜底。
 
     执行顺序对应四段式：
     ① 缓存准备：先 _sync_embedding_cache 校验进程内存是否有全量文稿向量——
        无则从 article_embeddings 冷加载，有则按 source_hash 增量同步；
     ② 用户向量：_compute_user_vector 优先读缓存（缺失才补算回填），
        历史不足 20 条返回 None，回退通用推荐；
-    ③ 召回：_knn_recall 取 top-50（含相似度随机扰动）；
+    ③ 召回：_knn_recall 取 top-50（含相似度随机扰动）+ 探索候选池（最不相似）；
     ④ 精排：_rerank（当前透传，后续接排序模型）；
-    ⑤ 兜底：_user_excluded_ids 过滤已观看/不感兴趣 → 不足 limit 时
-       _fill_by_hot 热门补齐 → 截取前 limit 篇 → 按序回查 Article 返回。
+    ⑤ 过滤：_user_excluded_ids 删除已观看/不感兴趣；
+    ⑥ 探索位：_pick_explore 从差距最大的候选里选 1 篇（反信息茧房），
+       放在列表最后，占用 1 个名额（8 篇 = 7 篇相似 + 1 篇探索）；
+    ⑦ 兜底：相似内容不足 limit-1 时 _fill_by_hot 热门补齐 → 回查 Article 返回。
 
     异常兜底：用户向量计算抛异常（模型加载失败等）时打印告警并回退通用推荐，
     保证接口在向量链路故障时仍可用。
@@ -393,18 +446,28 @@ def _recommend_by_vector(db: Session, user: User, limit: int) -> list[Article]:
     if user_vec is None:
         return _recommend_general(db, user, limit)
 
-    top_ids = _knn_recall(db, user_vec, RECALL_TOP_K)
+    top_ids, explore_ids = _knn_recall(db, user_vec, RECALL_TOP_K)
     ranked = _rerank(top_ids)  # 精排（预留，目前透传）
 
-    # 第四步：删除已观看与不感兴趣
+    # 第五步：删除已观看与不感兴趣
     excluded = _user_excluded_ids(db, user)
     filtered = [aid for aid in ranked if aid not in excluded]
 
-    # 兜底：候选不足时用热门补齐（补齐同样排除已看/不喜欢）
-    if len(filtered) < limit:
-        filtered = filtered + _fill_by_hot(db, set(filtered) | excluded, limit - len(filtered))
+    # 第六步：探索位——从与用户向量差距最大的候选里选 1 篇，避免"信息茧房"
+    explore = _pick_explore(db, explore_ids, excluded, set(filtered))
+    similar_limit = limit - 1 if explore is not None else limit
 
-    ids = filtered[:limit]
+    # 第七步：相似内容不足时用热门兜底（补齐同样排除已看/不喜欢与探索位）
+    if len(filtered) < similar_limit:
+        filtered = filtered + _fill_by_hot(
+            db,
+            set(filtered) | excluded | ({explore} if explore is not None else set()),
+            similar_limit - len(filtered),
+        )
+
+    ids = filtered[:similar_limit]
+    if explore is not None:
+        ids = ids + [explore]
     articles = db.query(Article).filter(Article.id.in_(ids)).all()
     by_id = {a.id: a for a in articles}
     return [by_id[aid] for aid in ids if aid in by_id]

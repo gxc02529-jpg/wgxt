@@ -1597,3 +1597,37 @@ body.theme-comic .el-dropdown__popper .el-popper__arrow::before {
     content: none;
   }
 }
+
+/* ---- 首页"为你推荐"区块：cyber 霓虹卡片 ---- */
+.portal-shell.theme-cyber .recommend-card {
+  border: 1px solid rgba(0, 229, 255, 0.4);
+  box-shadow: 0 0 18px rgba(0, 229, 255, 0.1);
+}
+
+.portal-shell.theme-cyber .recommend-card:hover {
+  box-shadow: 0 0 30px rgba(0, 229, 255, 0.28);
+}
+
+.portal-shell.theme-cyber .recommend-card__title a {
+  font-family: 'Orbitron', 'PingFang SC', sans-serif;
+  font-size: 0.92rem;
+  letter-spacing: 0.02em;
+}
+
+/* ---- 首页"为你推荐"区块：comic 漫画贴纸卡片 ---- */
+.portal-shell.theme-comic .recommend-card {
+  border: 2px solid var(--color-ink);
+  border-radius: 6px;
+  box-shadow: 4px 4px 0 var(--color-ink);
+}
+
+.portal-shell.theme-comic .recommend-card:hover {
+  transform: translateY(-3px) rotate(-0.5deg);
+  box-shadow: 6px 6px 0 var(--color-ink);
+}
+
+.portal-shell.theme-comic .recommend-card__title a {
+  font-family: 'Bangers', 'PingFang SC', cursive;
+  font-size: 1.15rem;
+  letter-spacing: 0.03em;
+}

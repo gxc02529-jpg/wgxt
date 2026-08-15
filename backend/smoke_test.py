@@ -693,6 +693,34 @@ def main():
         else:
             print("[21] 候选不足，跳过不感兴趣排除断言")
 
+    if should_run(22):
+        # 22. 门户"为你推荐"模块开关：管理员可读全部模块；关闭后前台不再返回；
+        #     非管理员访问后台模块接口 403
+        r = client.get(f"{BASE}/portal/modules/admin", headers=user_h)
+        assert r.status_code == 403, f"非管理员读取全量模块应 403: {r.text}"
+        print("[22] 全量模块接口权限校验 OK（普通用户 403）")
+
+        r = client.get(f"{BASE}/portal/modules/admin", headers=admin_h)
+        assert r.status_code == 200, f"管理员读取全量模块失败: {r.text}"
+        modules = r.json()["items"]
+        assert any(m["module_key"] == "recommend" for m in modules), "缺少 recommend 模块（需先跑 init_db.py）"
+        print("[22] 管理员读取全量模块 OK（含 recommend 开关）")
+
+        # 关闭 recommend → 前台公开接口不再返回该模块；恢复开启
+        r = client.put(f"{BASE}/portal/modules/recommend", headers=admin_h,
+                       json={"module_key": "recommend", "title": "个性化推荐", "content": {}, "enabled": False})
+        assert r.status_code == 200 and r.json()["module"]["enabled"] is False, f"关闭推荐模块失败: {r.text}"
+        r = client.get(f"{BASE}/portal/modules")
+        assert r.status_code == 200 and not any(
+            m["module_key"] == "recommend" for m in r.json()["items"]
+        ), "关闭后前台仍返回 recommend 模块"
+        print("[22] 关闭推荐模块后前台不再返回 OK")
+
+        r = client.put(f"{BASE}/portal/modules/recommend", headers=admin_h,
+                       json={"module_key": "recommend", "title": "个性化推荐", "content": {}, "enabled": True})
+        assert r.status_code == 200 and r.json()["module"]["enabled"] is True, f"恢复推荐模块失败: {r.text}"
+        print("[22] 推荐模块已恢复开启 OK")
+
     print("\nALL SMOKE TESTS PASSED")
 
 

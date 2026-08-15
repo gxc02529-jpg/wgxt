@@ -90,6 +90,9 @@ def seed():
         if not db.query(PortalModule).filter(PortalModule.module_key == "notice").first():
             db.add(PortalModule(module_key="notice", title="站内公告",
                                 content="欢迎使用文稿发布系统！", enabled=True))
+        if not db.query(PortalModule).filter(PortalModule.module_key == "recommend").first():
+            db.add(PortalModule(module_key="recommend", title="个性化推荐",
+                                content={}, enabled=True))
 
         # 5. 默认后台配置：自动审核开关（默认关闭，管理员可在后台「系统设置」中开启）
         if not db.query(SystemSetting).filter(SystemSetting.config_key == "auto_review").first():

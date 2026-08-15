@@ -34,6 +34,8 @@ export const articleApi = {
   list: (params) => client.get('/articles', { params }),
   detail: (id) => client.get(`/articles/${id}`),
   related: (id, params) => client.get(`/articles/${id}/related`, { params }),
+  // 个性化推荐：可选登录，登录且历史足量时返回向量召回结果，否则通用推荐
+  recommend: (params) => client.get('/articles/recommend', { params }),
   mine: (params) => client.get('/articles/mine', { params }),
   adminList: (params) => client.get('/articles/admin', { params }),
   create: (data) => client.post('/articles', data),
@@ -127,6 +129,7 @@ export const resourceApi = {
 // ---- 门户模块 ----
 export const portalApi = {
   modules: () => client.get('/portal/modules'),
+  allModules: () => client.get('/portal/modules/admin'),
   create: (data) => client.post('/portal/modules', data),
   update: (key, data) => client.put(`/portal/modules/${key}`, data),
   // 随机选取带封面的已发布文稿（后台一键填充轮播）

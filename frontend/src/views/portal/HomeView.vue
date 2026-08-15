@@ -90,6 +90,39 @@
       </aside>
     </div>
 
+    <!-- 为你推荐：个性化推荐区块（后台门户设置可开关） -->
+    <section v-if="recommendEnabled && recommendItems.length" class="recommend" aria-label="为你推荐">
+      <div class="section__head">
+        <div class="section__head-text">
+          <h2>为你推荐</h2>
+          <p class="section__desc">基于你的浏览偏好智能推荐</p>
+        </div>
+      </div>
+      <div class="recommend__grid">
+        <article v-for="a in recommendItems" :key="a.id" class="recommend-card">
+          <router-link
+            :to="{ name: 'article-detail', params: { id: a.id } }"
+            class="recommend-card__cover"
+            :aria-label="`查看：${a.title}`"
+          >
+            <img v-if="a.cover_url" :src="a.cover_url" :alt="a.title" loading="lazy" />
+            <span v-else class="recommend-card__placeholder">
+              {{ (a.categories[0]?.name || '文').slice(0, 1) }}
+            </span>
+          </router-link>
+          <div class="recommend-card__body">
+            <span v-if="a.categories[0]" class="tag">{{ a.categories[0].name }}</span>
+            <h3 class="recommend-card__title">
+              <router-link :to="{ name: 'article-detail', params: { id: a.id } }">
+                {{ a.title }}
+              </router-link>
+            </h3>
+            <p v-if="a.summary" class="recommend-card__summary">{{ a.summary }}</p>
+          </div>
+        </article>
+      </div>
+    </section>
+
     <!-- 栏目分区 -->
     <section v-for="cat in sectionCategories" :key="cat.id" class="section">
       <div class="section__head">
@@ -118,6 +151,7 @@ import ArticleCard from '../../components/ArticleCard.vue'
 const modules = ref([])
 const latestArticles = ref([])
 const hotArticles = ref([])
+const recommendItems = ref([])
 const categories = ref([])
 const sectionArticles = ref({})
 
@@ -129,6 +163,12 @@ const notice = computed(() => {
 const bannerItems = computed(() => {
   const m = modules.value.find((x) => x.module_key === 'banner')
   return Array.isArray(m?.content) ? m.content : []
+})
+
+// 个性化推荐开关：模块存在且启用（后台门户设置控制，关闭后前台接口不再返回该模块）
+const recommendEnabled = computed(() => {
+  const m = modules.value.find((x) => x.module_key === 'recommend')
+  return !!m && m.enabled !== false
 })
 
 const sectionCategories = computed(() => categories.value.slice(0, 4))
@@ -145,6 +185,18 @@ onMounted(async () => {
     latestArticles.value = latestRes.items
     hotArticles.value = hotRes.items
     categories.value = catRes.items
+
+    // 推荐区块：开关开启时请求个性化推荐（未登录返回通用推荐），失败静默不展示
+    if (recommendEnabled.value) {
+      articleApi
+        .recommend({ limit: 8 })
+        .then((res) => {
+          recommendItems.value = res.items || []
+        })
+        .catch(() => {
+          recommendItems.value = []
+        })
+    }
 
     // 并行加载每个栏目分区的最新文稿
     const sections = await Promise.all(
@@ -494,6 +546,102 @@ onMounted(async () => {
   gap: 0 var(--space-6);
 }
 
+/* ---- 为你推荐：竖排卡片网格（4→2→1 响应式） ---- */
+.recommend {
+  margin-bottom: var(--space-6);
+}
+
+.recommend__grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--space-5) var(--space-6);
+}
+
+.recommend-card {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  border: var(--rule) solid var(--color-rule);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  background: var(--color-paper);
+  transition:
+    transform var(--dur-base) var(--ease-out),
+    box-shadow var(--dur-base) var(--ease-out);
+}
+
+.recommend-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.12);
+}
+
+.recommend-card__cover {
+  display: block;
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  background: var(--color-primary-soft);
+}
+
+.recommend-card__cover img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform var(--dur-base) var(--ease-out);
+}
+
+.recommend-card:hover .recommend-card__cover img {
+  transform: scale(1.03);
+}
+
+.recommend-card__placeholder {
+  display: grid;
+  place-items: center;
+  height: 100%;
+  font-family: var(--font-heading);
+  font-size: 2.5rem;
+  font-weight: 700;
+  color: var(--color-accent);
+}
+
+.recommend-card__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+  padding: var(--space-4);
+}
+
+.recommend-card__title {
+  font-family: var(--font-heading);
+  font-size: var(--text-base);
+  font-weight: 700;
+  line-height: var(--leading-snug);
+}
+
+.recommend-card__title a {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  color: var(--color-ink);
+  transition: color var(--dur-base) var(--ease-out);
+}
+
+.recommend-card__title a:hover {
+  color: var(--color-accent);
+}
+
+.recommend-card__summary {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  margin: 0;
+  color: var(--color-ink-2);
+  font-size: var(--text-xs);
+  line-height: var(--leading-normal);
+}
+
 .empty {
   color: var(--color-ink-3);
   text-align: center;
@@ -504,6 +652,10 @@ onMounted(async () => {
 @media (max-width: 1024px) {
   .home__grid {
     grid-template-columns: 1fr;
+  }
+
+  .recommend__grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
@@ -527,6 +679,10 @@ onMounted(async () => {
   }
 
   .section__grid {
+    grid-template-columns: 1fr;
+  }
+
+  .recommend__grid {
     grid-template-columns: 1fr;
   }
 

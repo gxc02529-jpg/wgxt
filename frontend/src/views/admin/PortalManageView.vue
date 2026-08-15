@@ -116,6 +116,19 @@
       </div>
     </section>
 
+    <!-- 个性化推荐 -->
+    <section class="panel">
+      <div class="panel__head">
+        <h2>个性化推荐</h2>
+        <el-switch v-model="recommendModule.enabled" active-text="启用" @change="saveModule('recommend')" />
+      </div>
+      <p class="panel__tip">在门户首页展示"为你推荐"区块：登录且观看历史满 20 篇时基于向量召回推荐，
+        其余用户展示热门通用推荐；关闭后前台不再展示该区块。</p>
+      <div class="panel__actions">
+        <el-button type="primary" :loading="savingRecommend" @click="saveModule('recommend')">保存推荐设置</el-button>
+      </div>
+    </section>
+
   </div>
 </template>
 
@@ -127,10 +140,12 @@ import { articleApi, portalApi } from '../../api'
 
 const bannerModule = ref({ module_key: 'banner', title: '', content: [], enabled: true })
 const noticeModule = ref({ module_key: 'notice', title: '', content: '', enabled: true })
+const recommendModule = ref({ module_key: 'recommend', title: '个性化推荐', content: {}, enabled: true })
 const bannerSlides = ref([])
 const noticeText = ref('')
 const savingBanner = ref(false)
 const savingNotice = ref(false)
+const savingRecommend = ref(false)
 const randomizingBanner = ref(false)
 // 文稿选取弹窗
 const pickerVisible = ref(false)
@@ -144,9 +159,11 @@ const pickedArticles = ref([])
 
 onMounted(async () => {
   try {
-    const res = await portalApi.modules()
+    // 读取全量模块（含已禁用），保证关闭过的模块开关在设置页仍可见、可重新开启
+    const res = await portalApi.allModules()
     const banner = res.items.find((m) => m.module_key === 'banner')
     const notice = res.items.find((m) => m.module_key === 'notice')
+    const recommend = res.items.find((m) => m.module_key === 'recommend')
     if (banner) {
       bannerModule.value = banner
       bannerSlides.value = Array.isArray(banner.content) ? [...banner.content] : []
@@ -154,6 +171,9 @@ onMounted(async () => {
     if (notice) {
       noticeModule.value = notice
       noticeText.value = typeof notice.content === 'string' ? notice.content : ''
+    }
+    if (recommend) {
+      recommendModule.value = recommend
     }
   } catch (e) {
     ElMessage.error(String(e))
@@ -254,7 +274,7 @@ async function randomizeBanner() {
 }
 
 async function saveModule(key) {
-  const fn = key === 'banner' ? savingBanner : savingNotice
+  const fn = { banner: savingBanner, notice: savingNotice, recommend: savingRecommend }[key]
   fn.value = true
   try {
     if (key === 'banner') {
@@ -265,7 +285,7 @@ async function saveModule(key) {
         enabled: bannerModule.value.enabled,
       }
       await portalApi.update('banner', data)
-    } else {
+    } else if (key === 'notice') {
       const data = {
         module_key: 'notice',
         title: noticeModule.value.title,
@@ -273,6 +293,14 @@ async function saveModule(key) {
         enabled: noticeModule.value.enabled,
       }
       await portalApi.update('notice', data)
+    } else if (key === 'recommend') {
+      const data = {
+        module_key: 'recommend',
+        title: recommendModule.value.title,
+        content: {},
+        enabled: recommendModule.value.enabled,
+      }
+      await portalApi.update('recommend', data)
     }
     ElMessage.success('保存成功')
   } catch (e) {
