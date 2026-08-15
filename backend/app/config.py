@@ -36,5 +36,19 @@ class Settings(BaseSettings):
     DIFY_API_KEY: str = ""                 # Dify 应用 API Key（app-xxx）
     DIFY_TIMEOUT: int = 30                 # 调用超时（秒）
 
+    # Tavily 新闻搜索：Key 只从后端环境变量或 backend/.env 读取，不下发前端。
+    TAVILY_API_KEY: str = ""
+    TAVILY_TIMEOUT: int = 15
+
+    # 本地Embedding：默认加载相对项目根目录的 backend/app/multilingual-e5-small，可用 .env 覆盖
+    EMBEDDING_MODEL_NAME: str = "backend/app/multilingual-e5-small"
+    EMBEDDING_DEVICE: str = "auto"
+
+    # Grounded事件整理LLM：真实Key只允许来自环境变量或backend/.env。
+    LLM_API_KEY: str = ""
+    LLM_BASE_URL: str = "https://dashscope.aliyuncs.com/compatible-mode/v1"
+    LLM_MODEL: str = "qwen3.7-plus"
+    LLM_TIMEOUT: int = 90
+
 
 settings = Settings()
