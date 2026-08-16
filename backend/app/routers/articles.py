@@ -19,6 +19,9 @@ from ..database import get_db
 from ..models.article import Article, article_categories
 from ..models.category import Category
 from ..models.channel import Channel
+from ..models.ai_call import AICallLog
+from ..models.ai_correction import AICorrection
+from ..models.ai_task import AITask
 from ..models.review import ArticleReview
 from ..models.user import User
 from ..models.view_history import ViewHistory
@@ -376,6 +379,17 @@ def related_articles(
     return {"items": [a.to_dict() for a in rows]}
 
 
+def _bind_ai_records_by_draft_key(db: Session, article_id: int, draft_key: str | None) -> None:
+    """把草稿会话（draft_key）产生的 AI 任务/调用记录/纠正样本回填到正式文稿ID（幂等，仅回填未绑定行）"""
+    if not draft_key:
+        return
+    for model in (AITask, AICallLog, AICorrection):
+        db.query(model).filter(
+            model.draft_key == draft_key,
+            model.article_id.is_(None),
+        ).update({"article_id": article_id}, synchronize_session=False)
+
+
 @router.post("", summary="创建文稿（编辑/管理员，先存为草稿）")
 def create_article(body: ArticleIn, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     # 编辑功能：编辑 / 管理员（moderator）/ 系统管理员
@@ -395,6 +409,8 @@ def create_article(body: ArticleIn, db: Session = Depends(get_db), user: User = 
     db.flush()
     _apply_categories(db, article, body.category_ids)
     _apply_channels(db, article, body.channel_ids)
+    # 回填 AI 协作台在未保存阶段产生的记录（同事务，保存即关联）
+    _bind_ai_records_by_draft_key(db, article.id, body.draft_key)
     db.commit()
     db.refresh(article)
     # 向量化入库：尽力而为，向量化失败不影响草稿保存（全量回填接口可修复）
@@ -437,6 +453,8 @@ def update_article(article_id: int, body: ArticleIn, db: Session = Depends(get_d
     article.cover_url = body.cover_url
     _apply_categories(db, article, body.category_ids)
     _apply_channels(db, article, body.channel_ids)
+    # 回填 AI 协作台记录（防多步保存场景；不传 draft_key 时无副作用）
+    _bind_ai_records_by_draft_key(db, article.id, body.draft_key)
     db.commit()
     db.refresh(article)
     # 向量化入库：标题/分类未变时跳过；尽力而为，失败不影响保存

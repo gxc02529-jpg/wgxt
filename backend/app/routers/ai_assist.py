@@ -73,6 +73,8 @@ def _create_task(db: Session, user: User, feature_type: int, body: AIAssistIn) -
         user_id=user.id,
         feature_type=feature_type,
         status="pending",
+        article_id=body.article_id,
+        draft_key=body.draft_key,
         input_params=body.model_dump(),
     )
     db.add(task)
@@ -142,6 +144,42 @@ def ai_score(
     return {"task_id": task.id, "status": task.status}
 
 
+@router.get("/tasks/latest", response_model=AITaskStatusOut, summary="查询当前用户某 AI 功能最近一次任务（用于重新打开 AI 协作台时恢复上次结果）")
+def ai_task_latest(
+    feature_type: int = Query(..., ge=1, le=5, description="AI功能类型：1~5"),
+    article_id: int | None = Query(default=None, description="关联文稿ID，新建未保存时不恢复历史结果"),
+    draft_key: str | None = Query(default=None, max_length=64, description="草稿会话标识：未保存草稿按此恢复（article_id 为空时生效）"),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """只查当前用户自己的任务：优先按文稿绑定；未保存草稿按 draft_key 恢复，避免新建文稿恢复到旧结果。"""
+    query = db.query(AITask).filter(
+        AITask.user_id == user.id,
+        AITask.feature_type == feature_type,
+    )
+    if article_id is not None:
+        query = query.filter(AITask.article_id == article_id)
+    elif draft_key:
+        query = query.filter(AITask.draft_key == draft_key, AITask.article_id.is_(None))
+    else:
+        raise HTTPException(404, "新建文稿尚未保存，不恢复历史 AI 结果")
+    task = query.order_by(AITask.id.desc()).first()
+    if not task:
+        raise HTTPException(404, "暂无 AI 任务记录")
+    return {
+        "task_id": task.id,
+        "article_id": task.article_id,
+        "feature_type": task.feature_type,
+        "feature_name": FEATURE_NAMES.get(task.feature_type, "未知"),
+        "status": task.status,
+        "result": task.result_data,
+        "error": task.error_message,
+        "created_at": task.created_at,
+        "started_at": task.started_at,
+        "finished_at": task.finished_at,
+    }
+
+
 @router.get("/tasks/{task_id}", summary="查询 AI 任务状态（本人或管理员）", response_model=AITaskStatusOut)
 def ai_task_status(
     task_id: int,
@@ -156,6 +194,7 @@ def ai_task_status(
         raise HTTPException(403, "无权查看他人的 AI 任务")
     return {
         "task_id": task.id,
+        "article_id": task.article_id,
         "feature_type": task.feature_type,
         "feature_name": FEATURE_NAMES.get(task.feature_type, "未知"),
         "status": task.status,
@@ -183,6 +222,7 @@ def ai_correction_create(
     row = AICorrection(
         user_id=user.id,
         article_id=body.article_id,
+        draft_key=body.draft_key,
         title=title,
         content=body.content or "",
         model_category=body.model_category.strip(),
@@ -217,6 +257,7 @@ def admin_ai_calls(
     for log, user in rows:
         items.append({
             "id": log.id,
+            "article_id": log.article_id,
             "user_id": user.id,
             "username": user.username,
             "nickname": user.nickname,

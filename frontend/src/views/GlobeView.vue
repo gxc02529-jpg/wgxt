@@ -5,6 +5,7 @@
       ref="globeRef"
       class="globe-page__scene"
       :points="markers"
+      :intro="introEnabled"
       :interactive="true"
       :show-beams="layers.beams"
       :show-flights="layers.flights"
@@ -100,13 +101,14 @@
 <script setup>
 import { computed, onMounted, onBeforeUnmount, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { articleApi } from '../api'
+import { articleApi, portalApi } from '../api'
 import { REGIONS } from '../data/regions'
 import GlobeScene from '../components/globe/GlobeScene.vue'
 
 const router = useRouter()
 
 const ready = ref(false)
+const introEnabled = ref(true)
 const hover = ref(null)
 const markers = ref([])
 const stage = ref('')
@@ -308,6 +310,12 @@ const tipStyle = computed(() => {
 })
 
 onMounted(async () => {
+  try {
+    const splash = await portalApi.splash()
+    introEnabled.value = splash.enabled !== false
+  } catch {
+    introEnabled.value = true
+  }
   try {
     const res = await articleApi.list({ sort: 'hot', page_size: 40 })
     markers.value = buildMarkers(res.items.length ? res.items : DEMO_ARTICLES)

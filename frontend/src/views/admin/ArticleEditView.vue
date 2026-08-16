@@ -377,6 +377,15 @@ const canUseAiWriting = computed(() =>
   && !aiWritingLoading.value
 )
 
+// 新建文稿的草稿会话标识：AI 协作台调用记录先挂此键，保存拿到正式 ID 后回填 article_id
+function genDraftKey() {
+  try {
+    return crypto.randomUUID()
+  } catch {
+    return `draft_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`
+  }
+}
+
 onMounted(async () => {
   try {
     const [catRes, chRes] = await Promise.all([categoryApi.list(), channelApi.list()])
@@ -386,6 +395,8 @@ onMounted(async () => {
     if (isEdit) {
       const detail = await articleApi.detail(route.params.id)
       Object.assign(form, {
+        // 已有文稿的 ID：AI 协作台提交/恢复/纠正都靠它绑定 article_id（新建草稿走 draft_key）
+        id: detail.id,
         title: detail.title,
         summary: detail.summary,
         cover_url: detail.cover_url,
@@ -397,9 +408,11 @@ onMounted(async () => {
       })
       articleStatus.value = detail.status
       smartCollectReview.value = detail.smart_collect || null
-    } else if (defaultChannel) {
+    } else {
+      // 新文稿：生成草稿会话标识（AI 协作台记录先挂此键，保存后回填正式文稿ID）
+      form.draft_key = genDraftKey()
       // 新文稿默认勾选基础渠道（后端也会强制包含，这里保证界面一致）
-      form.channel_ids = [defaultChannel.id]
+      if (defaultChannel) form.channel_ids = [defaultChannel.id]
     }
   } catch (e) {
     ElMessage.error(String(e))
@@ -497,6 +510,7 @@ async function save(submitReview) {
       category_ids: form.category_ids,
       channel_ids: form.channel_ids,
       city: form.city || '',
+      draft_key: form.draft_key || '',
     }
     const res = isEdit
       ? await articleApi.update(route.params.id, payload)

@@ -55,6 +55,12 @@
         <el-table-column label="调用时间" width="175">
           <template #default="{ row }">{{ row.created_at }}</template>
         </el-table-column>
+        <el-table-column label="关联文稿" width="100">
+          <template #default="{ row }">
+            <span v-if="row.article_id" class="mini-tag">#{{ row.article_id }}</span>
+            <span v-else class="cell-muted">未关联</span>
+          </template>
+        </el-table-column>
         <el-table-column type="expand">
           <template #default="{ row }">
             <div class="json-grid">
@@ -160,6 +166,11 @@ onMounted(() => load(1))
   margin: 0 0 6px;
   font-size: 13px;
   color: var(--color-text-secondary, #64748b);
+}
+
+.cell-muted {
+  color: var(--color-text-secondary, #94a3b8);
+  font-size: 12px;
 }
 
 .json-block__pre {

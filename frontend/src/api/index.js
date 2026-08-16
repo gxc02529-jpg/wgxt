@@ -145,6 +145,8 @@ export const portalApi = {
   // 随机选取带封面的已发布文稿（后台一键填充轮播）
   bannerRandom: (count = 5) => client.get('/portal/banner/random', { params: { count } }),
   grayscale: () => client.get('/portal/grayscale'),
+  splash: () => client.get('/portal/splash'),
+  setSplash: (enabled) => client.put('/portal/splash', { enabled }),
   // 注册为编辑的开放策略（公开读；管理员写）
   registerEditor: () => client.get('/portal/register-editor'),
   setRegisterEditor: (enabled) => client.put('/portal/register-editor', { enabled }),
@@ -207,6 +209,7 @@ export const aiAssistApi = {
   review: (data) => client.post('/ai/assist/review', data),
   check: (data) => client.post('/ai/assist/check', data),
   score: (data) => client.post('/ai/assist/score', data),
+  latestTask: (featureType, articleId, draftKey) => client.get('/ai/assist/tasks/latest', { params: { feature_type: featureType, article_id: articleId || undefined, draft_key: draftKey || undefined } }),
   getTask: (taskId) => client.get(`/ai/assist/tasks/${taskId}`),
 }
 

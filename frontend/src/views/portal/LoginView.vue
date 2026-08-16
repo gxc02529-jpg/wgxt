@@ -47,7 +47,7 @@
 import { reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { authApi, categoryApi, preferenceApi } from '../../api'
+import { authApi, categoryApi, portalApi, preferenceApi } from '../../api'
 import { useAuthStore } from '../../stores/auth'
 import AuthShell from '../../components/AuthShell.vue'
 import PreferenceDialog from '../../features/preference/PreferenceDialog.vue'
@@ -59,6 +59,18 @@ const formRef = ref()
 const loading = ref(false)
 const queryRedirect = route.query.redirect || ''
 const redirect = queryRedirect && queryRedirect !== '/' ? queryRedirect : '/globe'
+
+// 根据后台开屏动画开关决定登录后默认跳转目标
+async function resolveDefaultRedirect() {
+  if (queryRedirect && queryRedirect !== '/') return queryRedirect
+  try {
+    const res = await portalApi.splash()
+    return res.enabled ? '/globe' : '/'
+  } catch {
+    // 获取失败时保持原行为，仍跳转开屏页
+    return '/globe'
+  }
+}
 
 // 兴趣偏好弹窗状态
 const showPref = ref(false)
@@ -92,7 +104,7 @@ async function maybeOpenPreference(user) {
   try {
     const pref = await preferenceApi.get()
     if (pref.has_preference || localStorage.getItem(skipKey)) {
-      router.push(redirect)
+      router.push(await resolveDefaultRedirect())
       return
     }
     const cats = await categoryApi.list()
@@ -100,16 +112,16 @@ async function maybeOpenPreference(user) {
     showPref.value = true
   } catch {
     // 查询失败不阻塞登录，直接进入
-    router.push(redirect)
+    router.push(await resolveDefaultRedirect())
   }
 }
 
-function onPrefSaved() {
+async function onPrefSaved() {
   showPref.value = false
-  router.push(redirect)
+  router.push(await resolveDefaultRedirect())
 }
 
-function onPrefSkipped() {
+async function onPrefSkipped() {
   const skipKey = `wgf_pref_skipped_${auth.user?.id}`
   try {
     localStorage.setItem(skipKey, '1')
@@ -117,7 +129,7 @@ function onPrefSkipped() {
     // ignore
   }
   showPref.value = false
-  router.push(redirect)
+  router.push(await resolveDefaultRedirect())
 }
 
 </script>

@@ -264,6 +264,46 @@ def ensure_schema_compat() -> None:
                 print("已迁移：每条新闻线索最多保存一份可复用正文")
 
 
+
+    # AI协作台：任务与调用记录绑定文稿ID（老库补列，避免新建文稿恢复旧结果）
+    with engine.begin() as conn:
+        for table_name in ("ai_tasks", "ai_call_logs"):
+            exists = conn.execute(
+                text(
+                    "SELECT COLUMN_NAME FROM information_schema.COLUMNS "
+                    "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = :t AND COLUMN_NAME = 'article_id'"
+                ),
+                {"t": table_name},
+            ).first()
+            if not exists:
+                conn.execute(
+                    text(
+                        f"ALTER TABLE {table_name} ADD COLUMN article_id INT NULL "
+                        "COMMENT '关联文稿ID'"
+                    )
+                )
+                print(f"已迁移：{table_name}.article_id 新增成功")
+
+    # AI协作台：任务/调用记录/纠正样本增加 draft_key（新建文稿保存前关联草稿会话，保存后回填 article_id）
+    with engine.begin() as conn:
+        for table_name in ("ai_tasks", "ai_call_logs", "ai_corrections"):
+            exists = conn.execute(
+                text(
+                    "SELECT COLUMN_NAME FROM information_schema.COLUMNS "
+                    "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = :t AND COLUMN_NAME = 'draft_key'"
+                ),
+                {"t": table_name},
+            ).first()
+            if not exists:
+                conn.execute(
+                    text(
+                        f"ALTER TABLE {table_name} ADD COLUMN draft_key VARCHAR(64) NULL "
+                        "COMMENT '草稿会话标识：新建文稿未保存时关联AI记录，保存后回填article_id'"
+                    )
+                )
+                print(f"已迁移：{table_name}.draft_key 新增成功")
+
+
 def get_db():
     """FastAPI 依赖：每个请求一个数据库会话，请求结束自动关闭"""
     db = SessionLocal()

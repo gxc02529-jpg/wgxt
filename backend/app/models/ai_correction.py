@@ -21,6 +21,7 @@ class AICorrection(Base):
         nullable=False, index=True, comment="提交纠正的用户ID",
     )
     article_id = Column(Integer, nullable=True, index=True, comment="关联文稿ID（可选）")
+    draft_key = Column(String(64), nullable=True, index=True, comment="草稿会话标识：保存后回填 article_id")
     title = Column(String(200), nullable=False, comment="文稿标题（训练样本文本）")
     content = Column(Text, nullable=False, default="", comment="文稿正文纯文本（训练样本正文，可空）")
     model_category = Column(String(50), nullable=False, default="", comment="AI 模型原始分类（中文名）")

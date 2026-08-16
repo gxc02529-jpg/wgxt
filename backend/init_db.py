@@ -116,6 +116,13 @@ def seed():
                 value_type="bool",
                 description="哀悼灰度模式：开启后前台门户全站显示为黑白（用于名人逝世等场景）",
             ))
+        if not db.query(SystemSetting).filter(SystemSetting.config_key == "splash_enabled").first():
+            db.add(SystemSetting(
+                config_key="splash_enabled",
+                config_value="true",
+                value_type="bool",
+                description="登录后是否播放 3D 地球开屏动画；关闭后直接进入门户首页",
+            ))
         # 6. 积分系统配置：每日签到积分范围（默认 1~5，管理员可在系统设置调整）
         if not db.query(SystemSetting).filter(SystemSetting.config_key == "signin_min_points").first():
             db.add(SystemSetting(

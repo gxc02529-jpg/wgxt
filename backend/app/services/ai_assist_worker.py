@@ -9,6 +9,7 @@
 
 注意：后台线程不能复用请求级数据库 Session，必须自行通过 SessionLocal 开新会话。
 """
+import json
 import os
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
@@ -17,6 +18,7 @@ from ..database import SessionLocal
 from ..models.ai_task import AITask
 from ..models.user import User
 from ..services.ai_call_service import log_ai_call
+from ..services.dify_service import DifyError, run_workflow
 
 # 功能类型常量：与 ai_call_logs / ai_tasks.feature_type 注释保持一致
 FEATURE_CLASSIFY = 1  # AI 分类
@@ -28,6 +30,40 @@ FEATURE_SCORE = 5     # AI 文稿打分
 # 后台任务并发数：单机场景 4 个 worker 足够，可按需通过环境变量 AI_TASK_MAX_WORKERS 调大
 _MAX_WORKERS = int(os.environ.get("AI_TASK_MAX_WORKERS", "4"))
 _executor = ThreadPoolExecutor(max_workers=_MAX_WORKERS, thread_name_prefix="ai-assist")
+
+
+
+
+def _extract_summary_from_outputs(outputs) -> str:
+    """从 Dify outputs 中提取可展示的摘要文本。
+
+    Dify 工作流结束节点常返回 {"text": "..."}，text 可能是纯文本或 JSON 字符串；
+    同时兼容 summary/text/result/one_sentence_summary 等常见字段。
+    """
+    if isinstance(outputs, str):
+        text = outputs
+    elif isinstance(outputs, dict):
+        text = outputs.get("text") or outputs.get("summary") or outputs.get("result") or ""
+        if not text and isinstance(outputs.get("outputs"), (str, dict)):
+            text = outputs.get("outputs")
+    else:
+        text = ""
+
+    if isinstance(text, dict):
+        text = text.get("one_sentence_summary") or text.get("summary") or text.get("text") or ""
+    if isinstance(text, str) and text.strip().startswith("{"):
+        try:
+            parsed = json.loads(text)
+            if isinstance(parsed, dict):
+                text = parsed.get("one_sentence_summary") or parsed.get("summary") or parsed.get("text") or text
+        except (ValueError, TypeError):
+            pass
+
+    result = " ".join(str(text).split()).strip()
+    if not result:
+        raise ValueError("Dify工作流未返回可识别的摘要内容")
+    return result
+
 
 
 def dispatch(feature_type: int, inputs: dict) -> dict:
@@ -48,16 +84,23 @@ def dispatch(feature_type: int, inputs: dict) -> dict:
         from ..aimodel.predict import predict_fun
         result=predict_fun(title)
 
-        #加个知识库配置
-
-        #
-
         return {"category_name": result}
 
     if feature_type == FEATURE_SUMMARY:
         if not title or not content:
             raise ValueError("请先填写文稿标题和正文")
-        return {"summary": "这是摘要"}
+        # 登记的工作流输入变量为 title + context（见 dify_workflows.input_schema）
+        db = SessionLocal()
+        try:
+            data = run_workflow(
+                db,
+                inputs={"title": title, "context": content},
+                name="article_summary",
+            )
+        finally:
+            db.close()
+        summary = _extract_summary_from_outputs(data.get("outputs") or {})
+        return {"summary": summary}
 
     if feature_type == FEATURE_REVIEW:
         if not title or not content:
@@ -123,7 +166,7 @@ def _execute_task(task_id: int) -> None:
             db.commit()
             # 成功调用记录（若用户已被删除则跳过记录，任务结果仍保留）
             if user:
-                log_ai_call(db, user, task.feature_type, task.input_params or {}, result)
+                log_ai_call(db, user, task.feature_type, task.input_params or {}, result, article_id=task.article_id, draft_key=task.draft_key)
         except Exception as exc:  # noqa: BLE001 - 任务失败需完整落库供后台排查
             db.rollback()
             task = db.get(AITask, task_id)
@@ -136,6 +179,8 @@ def _execute_task(task_id: int) -> None:
                         db, user, task.feature_type,
                         task.input_params or {},
                         {"error": task.error_message},
+                        article_id=task.article_id,
+                        draft_key=task.draft_key,
                     )
                 except Exception:  # noqa: BLE001 - 记录失败不阻塞任务状态更新
                     db.rollback()

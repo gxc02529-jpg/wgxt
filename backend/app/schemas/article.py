@@ -15,6 +15,7 @@ class ArticleIn(BaseModel):
     city: str = Field(default="", max_length=50, description="城市（同城搜索），如 深圳")
     category_ids: List[int] = Field(default_factory=list, description="所属栏目ID列表（可多选）")
     channel_ids: List[int] = Field(default_factory=list, description="分发渠道ID列表（可多选；基础渠道自动包含，不可移除）")
+    draft_key: str | None = Field(default=None, max_length=64, description="草稿会话标识：新建未保存文稿的 AI 记录先挂此键，创建成功后回填 article_id")
 
 
 class ReviewIn(BaseModel):

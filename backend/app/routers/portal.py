@@ -10,7 +10,7 @@ from ..database import get_db
 from ..models.article import Article
 from ..models.portal import PortalModule
 from ..models.user import User
-from ..schemas.portal import OssConfigIn, PortalModuleIn, RegisterEditorIn, ThemeSwitchIn
+from ..schemas.portal import OssConfigIn, PortalModuleIn, RegisterEditorIn, SplashSwitchIn, ThemeSwitchIn
 from ..services.settings_service import get_setting, set_setting
 
 router = APIRouter(prefix="/portal", tags=["门户"])
@@ -64,6 +64,29 @@ def get_portal_theme(db: Session = Depends(get_db)):
 def get_grayscale(db: Session = Depends(get_db)):
     """名人逝世等场景下，管理员在后台系统设置开启后，前台门户全站显示为黑白"""
     return {"enabled": bool(get_setting(db, "site_grayscale", default=False))}
+
+
+@router.get("/splash", summary="查询登录后开屏动画开关（公开）")
+def get_splash(db: Session = Depends(get_db)):
+    """控制登录后是否跳转到 3D 地球开屏页；关闭时直接进入门户首页。"""
+    return {"enabled": bool(get_setting(db, "splash_enabled", default=True))}
+
+
+@router.put("/splash", summary="更新登录后开屏动画开关（管理员）")
+def set_splash(
+    body: SplashSwitchIn,
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_roles("admin")),
+):
+    set_setting(
+        db,
+        "splash_enabled",
+        body.enabled,
+        value_type="bool",
+        description="登录后是否播放 3D 地球开屏动画；关闭后直接进入门户首页",
+    )
+    db.commit()
+    return {"message": "保存成功", "enabled": body.enabled}
 
 
 @router.get("/register-editor", summary="查询是否允许用户注册为编辑写手（公开）")

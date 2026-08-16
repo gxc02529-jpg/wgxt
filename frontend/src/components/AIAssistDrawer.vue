@@ -335,6 +335,9 @@ const NEEDS = {
   score: ['content'],
 }
 
+// 功能键→后端 feature_type 的映射（用于恢复最近一次任务）
+const FEATURE_TYPE = { classify: 1, summary: 2, review: 3, check: 4, score: 5 }
+
 const editTab = ref('edit')
 const loading = reactive({ classify: false, summary: false, review: false, check: false, score: false })
 const classifyResult = ref('')
@@ -427,6 +430,7 @@ async function submitCorrection() {
       model_category: classifyResult.value,
       corrected_category: hit.name,
       article_id: props.form.id || null,
+      draft_key: props.form?.draft_key || null,
     })
     // 纠正结果应用到当前文稿：自动选中纠正栏目
     if (!props.form.category_ids.includes(hit.id)) props.form.category_ids.push(hit.id)
@@ -439,6 +443,51 @@ async function submitCorrection() {
   }
 }
 
+function applyResult(key, data, silent = false) {
+  if (key === 'classify') {
+    classifyResult.value = data.category_name
+    const hit = props.categories.find((c) => c.name === data.category_name)
+    if (hit) {
+      if (!props.form.category_ids.includes(hit.id)) props.form.category_ids.push(hit.id)
+      if (!silent) ElMessage.success(`已自动选中栏目「${hit.name}」`)
+    } else if (!silent) {
+      ElMessage.warning(`识别到栏目「${data.category_name}」，但栏目列表中不存在`)
+    }
+  } else if (key === 'summary') {
+    summaryResult.value = data.summary
+    props.form.summary = data.summary
+    if (!silent) ElMessage.success('摘要已回写到摘要输入框')
+  } else if (key === 'review') {
+    reviewItems.value = data
+  } else if (key === 'check') {
+    checkItems.value = data.items || []
+    activeCheckIndex.value = -1
+  } else if (key === 'score') {
+    scoreItems.value = data.items || []
+    scoreTotal.value = data['总分'] || ''
+  }
+}
+
+async function pollTaskResult(key, taskId) {
+  let data = null
+  for (let i = 0; i < POLL_MAX_TIMES; i++) {
+    if (pollAbort) return null
+    await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS))
+    if (pollAbort) return null
+    const status = await aiAssistApi.getTask(taskId)
+    if (status.status === 'success') {
+      data = status.result
+      break
+    }
+    if (status.status === 'failed') {
+      throw new Error(status.error || 'AI 任务执行失败，请稍后重试')
+    }
+  }
+  if (!data) throw new Error('AI 任务处理超时，可稍后在后台「AI 调用记录」中查看')
+  applyResult(key, data)
+  return data
+}
+
 async function run(key) {
   loading[key] = true
   pollAbort = false
@@ -448,53 +497,14 @@ async function run(key) {
       summary: props.form.summary || '',
       // AI 入参使用纯文本正文（content_source），避免把 HTML 标签交给模型
       content: contentText.value,
+      article_id: props.form.id || null,
+      draft_key: props.form?.draft_key || null,
       category_ids: props.form.category_ids || [],
     }
-    // 1. 提交异步任务：接口立即返回 task_id，不等待模型结果（拦截器已返回响应体 data）
     const submitRes = await aiAssistApi[key](payload)
     const taskId = submitRes?.task_id
     if (!taskId) throw new Error('AI 任务提交失败，请稍后重试')
-
-    // 2. 轮询任务状态直到成功 / 失败 / 超时；关闭弹窗会中止本轮轮询
-    let data = null
-    for (let i = 0; i < POLL_MAX_TIMES; i++) {
-      if (pollAbort) return
-      await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS))
-      if (pollAbort) return
-      const status = await aiAssistApi.getTask(taskId)
-      if (status.status === 'success') {
-        data = status.result
-        break
-      }
-      if (status.status === 'failed') {
-        throw new Error(status.error || 'AI 任务执行失败，请稍后重试')
-      }
-    }
-    if (!data) throw new Error('AI 任务处理超时，可稍后在后台「AI 调用记录」中查看')
-
-    // 3. 结果回写（与改造前行为一致）
-    if (key === 'classify') {
-      classifyResult.value = data.category_name
-      const hit = props.categories.find((c) => c.name === data.category_name)
-      if (hit) {
-        if (!props.form.category_ids.includes(hit.id)) props.form.category_ids.push(hit.id)
-        ElMessage.success(`已自动选中栏目「${hit.name}」`)
-      } else {
-        ElMessage.warning(`识别到栏目「${data.category_name}」，但栏目列表中不存在`)
-      }
-    } else if (key === 'summary') {
-      summaryResult.value = data.summary
-      props.form.summary = data.summary
-      ElMessage.success('摘要已回写到摘要输入框')
-    } else if (key === 'review') {
-      reviewItems.value = data
-    } else if (key === 'check') {
-      checkItems.value = data.items || []
-      activeCheckIndex.value = -1
-    } else if (key === 'score') {
-      scoreItems.value = data.items || []
-      scoreTotal.value = data['总分'] || ''
-    }
+    await pollTaskResult(key, taskId)
   } catch (e) {
     ElMessage.error(String(e))
   } finally {
@@ -502,7 +512,34 @@ async function run(key) {
   }
 }
 
-// 每次打开弹窗时重置临时结果，避免上次遗留
+// 重新打开弹窗时恢复最近一次任务：已成功直接回写；失败允许重调；running 继续轮询
+async function restoreLatestResults() {
+  // 恢复依据：已有文稿按 ID；未保存的新建草稿按 draft_key（关闭重开不丢上次结果）
+  const articleId = props.form?.id || null
+  const draftKey = props.form?.draft_key || null
+  if (!articleId && !draftKey) return
+  const running = []
+  for (const [key, featureType] of Object.entries(FEATURE_TYPE)) {
+    try {
+      const latest = await aiAssistApi.latestTask(featureType, articleId, draftKey)
+      if (latest.status === 'success') {
+        applyResult(key, latest.result, true)
+      } else if (latest.status === 'pending' || latest.status === 'running') {
+        loading[key] = true
+        running.push({ key, taskId: latest.task_id })
+      }
+    } catch {
+      // 无历史任务，正常展示空状态
+    }
+  }
+  await Promise.all(
+    running.map(async ({ key, taskId }) => {
+      try { await pollTaskResult(key, taskId) } catch { /* 错误已提示 */ } finally { loading[key] = false }
+    }),
+  )
+}
+
+// 每次打开弹窗时：清空临时状态后尝试恢复最近一次结果
 watch(
   () => props.modelValue,
   (val) => {
@@ -517,6 +554,8 @@ watch(
       activeCheckIndex.value = -1
       scoreItems.value = []
       scoreTotal.value = ''
+      Object.keys(loading).forEach((key) => { loading[key] = false })
+      restoreLatestResults()
     } else {
       // 关闭弹窗：中止进行中的轮询，避免组件销毁后仍在后台查询
       pollAbort = true

@@ -525,7 +525,8 @@ def main():
         # 逐个提交 5 类任务并轮询到成功，校验结果结构（classify 命中知识库返回科学）
         cases = [
             ("classify", {"title": ai_classify_title}, lambda d: d["category_name"] == "科学"),
-            ("summary", {"title": ai_title, "content": ai_content}, lambda d: d["summary"] == "这是摘要"),
+            # 摘要已接入真实 Dify 工作流，断言返回非空摘要文本（占位/真实实现均成立）
+            ("summary", {"title": ai_title, "content": ai_content}, lambda d: bool(str(d.get("summary", "")).strip())),
             ("review", {"title": ai_title, "content": ai_content}, lambda d: set(d) >= {"色情内容", "用语文明"}),
             ("check", {"content": ai_content}, lambda d: len(d.get("items", [])) >= 2),
             ("score", {"content": ai_content}, lambda d: d["总分"] == "80/100"),
@@ -535,7 +536,8 @@ def main():
             assert r.status_code == 200, f"{name} 提交任务失败: {r.text}"
             task_id = r.json()["task_id"]
             assert r.json()["status"] == "pending", f"{name} 初始状态应为 pending: {r.text}"
-            done = wait_ai_task(client, ed_h, task_id)
+            # 摘要走真实 Dify 工作流，耗时可能较长，放宽轮询上限
+            done = wait_ai_task(client, ed_h, task_id, max_wait=180 if name == "summary" else 30)
             assert done["status"] == "success", f"{name} 任务失败: {done}"
             assert done["feature_name"], f"{name} 应返回功能中文名"
             assert check(done["result"]), f"{name} 结果不符合占位实现: {done['result']}"
@@ -720,6 +722,75 @@ def main():
                        json={"module_key": "recommend", "title": "个性化推荐", "content": {}, "enabled": True})
         assert r.status_code == 200 and r.json()["module"]["enabled"] is True, f"恢复推荐模块失败: {r.text}"
         print("[22] 推荐模块已恢复开启 OK")
+
+    if should_run(23):
+        # 23. AI 协作台 draft_key：未保存草稿按草稿会话恢复；保存后任务/调用记录/纠正样本回填文稿ID
+        dk = f"draft_{uniq}_{int(time.time() * 1000) % 1000000}"
+        kb_key = f"smoke_dk_{uniq}"
+        # 写入知识库关键词保证分类成功且结果确定（冒烟后删除，不污染演示数据）
+        r = client.put(f"{BASE}/settings/ai_knowledge_base", headers=admin_h, json={
+            "value": {kb_key: {"title": "冒烟草稿键", "category": "科学"}},
+            "value_type": "json",
+        })
+        assert r.status_code == 200, f"写入知识库失败: {r.text}"
+        kb_title = f"{kb_key} 出席国际会议"
+
+        # 未保存草稿（无 article_id，带 draft_key）提交分类任务并轮询成功
+        r = client.post(f"{BASE}/ai/assist/classify", headers=ed_h,
+                        json={"title": kb_title, "draft_key": dk})
+        assert r.status_code == 200, f"提交分类任务失败: {r.text}"
+        dk_task_id = r.json()["task_id"]
+        done = wait_ai_task(client, ed_h, dk_task_id)
+        assert done["status"] == "success" and done["result"]["category_name"] == "科学", f"分类任务异常: {done}"
+        print(f"[23] 未保存草稿提交分类任务 OK  task_id={dk_task_id}")
+
+        # 未保存草稿按 draft_key 恢复最近任务；两者都无时 404
+        r = client.get(f"{BASE}/ai/assist/tasks/latest", headers=ed_h,
+                       params={"feature_type": 1, "draft_key": dk})
+        assert r.status_code == 200 and r.json()["task_id"] == dk_task_id, f"按 draft_key 恢复失败: {r.text}"
+        r = client.get(f"{BASE}/ai/assist/tasks/latest", headers=ed_h, params={"feature_type": 1})
+        assert r.status_code == 404, f"无 article_id/draft_key 应 404: {r.text}"
+        print("[23] 未保存草稿按 draft_key 恢复 OK（无键 404）")
+
+        # 草稿会话提交一条分类纠正（无 article_id，带 draft_key）
+        corr_title = f"AI草稿键纠正_{uniq}"
+        r = client.post(f"{BASE}/ai/assist/corrections", headers=ed_h, json={
+            "title": corr_title, "content": "草稿键纠正正文", "model_category": "游戏",
+            "corrected_category": "科学", "draft_key": dk,
+        })
+        assert r.status_code == 200, f"提交纠正失败: {r.text}"
+        print("[23] 草稿会话提交分类纠正 OK")
+
+        # 用 draft_key 创建文稿：保存后任务/调用记录/纠正样本自动回填文稿ID
+        r = client.post(f"{BASE}/articles", headers=ed_h, json={
+            "title": f"draft_key绑定测试_{uniq}", "summary": "草稿键绑定", "content": "<p>正文</p>",
+            "content_source": "正文", "category_ids": cat_ids[:1], "channel_ids": [],
+            "draft_key": dk,
+        })
+        assert r.status_code == 200, f"创建文稿失败: {r.text}"
+        bound_aid = r.json()["article"]["id"]
+        assert bound_aid, "创建文稿未返回 ID"
+        print(f"[23] 携带 draft_key 创建文稿 OK  article_id={bound_aid}")
+
+        # 后台调用记录：分类任务对应记录已回填文稿ID
+        r = client.get(f"{BASE}/admin/ai-calls", headers=admin_h,
+                       params={"feature_type": 1, "page_size": 20})
+        assert r.status_code == 200, f"查询调用记录失败: {r.text}"
+        log_row = next((x for x in r.json()["items"]
+                        if (x.get("input_params") or {}).get("title") == kb_title), None)
+        assert log_row and log_row.get("article_id") == bound_aid, f"调用记录未回填文稿ID: {log_row}"
+        print("[23] 调用记录已回填文稿ID OK")
+
+        # 纠正样本已回填文稿ID
+        r = client.get(f"{BASE}/admin/ai-corrections", headers=admin_h, params={"keyword": corr_title})
+        assert r.status_code == 200 and r.json()["total"] >= 1, "纠正样本列表异常"
+        assert r.json()["items"][0]["article_id"] == bound_aid, "纠正样本未回填文稿ID"
+        print("[23] 纠正样本已回填文稿ID OK")
+
+        # 恢复知识库配置（回退本地文件），不污染演示数据
+        r = client.delete(f"{BASE}/settings/ai_knowledge_base", headers=admin_h)
+        assert r.status_code == 200, f"恢复知识库失败: {r.text}"
+        print("[23] 知识库已恢复（回退本地文件）")
 
     print("\nALL SMOKE TESTS PASSED")
 

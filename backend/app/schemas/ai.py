@@ -11,6 +11,8 @@ class AIAssistIn(BaseModel):
     summary: str = Field(default="", max_length=1000, description="文稿摘要（生成摘要功能不需要传）")
     content: str = Field(default="", description="文稿正文（HTML 原文）")
     category_ids: list[int] = Field(default_factory=list, description="当前已选栏目ID列表（可选，供 AI 参考）")
+    article_id: int | None = Field(default=None, description="关联文稿ID（编辑时传入，新建未保存时为 null）")
+    draft_key: str | None = Field(default=None, max_length=64, description="草稿会话标识（新建未保存文稿生成；保存后用于回填关联文稿ID）")
 
 
 class AITaskOut(BaseModel):
@@ -22,6 +24,7 @@ class AITaskOut(BaseModel):
 class AITaskStatusOut(BaseModel):
     """AI 任务状态查询响应"""
     task_id: int = Field(description="任务ID")
+    article_id: int | None = Field(default=None, description="关联文稿ID")
     feature_type: int = Field(description="AI功能类型（1~5）")
     feature_name: str = Field(description="AI功能中文名")
     status: str = Field(description="任务状态：pending/running/success/failed")
@@ -39,3 +42,4 @@ class AICorrectionIn(BaseModel):
     model_category: str = Field(default="", max_length=50, description="AI 模型原始分类（中文名）")
     corrected_category: str = Field(min_length=1, max_length=50, description="用户纠正后的分类（中文名）")
     article_id: int | None = Field(default=None, description="关联文稿ID（可选）")
+    draft_key: str | None = Field(default=None, max_length=64, description="草稿会话标识（可选，保存后回填 article_id）")

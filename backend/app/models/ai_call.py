@@ -10,7 +10,7 @@ feature_type 数字含义（与后端 routers/ai_assist.py 常量、后台页面
 """
 from datetime import datetime
 
-from sqlalchemy import Column, DateTime, ForeignKey, Integer, JSON
+from sqlalchemy import Column, DateTime, ForeignKey, Integer, JSON, String
 
 from ..database import Base
 
@@ -25,6 +25,14 @@ class AICallLog(Base):
         nullable=False, index=True, comment="调用用户ID",
     )
     # 数字含义见本文件顶部注释：1=AI分类 2=AI生成摘要 3=AI多维度审核 4=AI内容校验 5=AI文稿打分
+    article_id = Column(
+        Integer, nullable=True, index=True,
+        comment="关联文稿ID；新建文稿未保存时为NULL",
+    )
+    draft_key = Column(
+        String(64), nullable=True, index=True,
+        comment="草稿会话标识：新建文稿未保存时用于关联同一草稿会话的调用记录，保存后回填 article_id",
+    )
     feature_type = Column(Integer, nullable=False, index=True, comment="AI功能类型（1=AI分类 2=AI生成摘要 3=AI多维度审核 4=AI内容校验 5=AI文稿打分）")
     input_params = Column(JSON, nullable=False, comment="调用入参（JSON，含标题/摘要/正文等）")
     output_data = Column(JSON, nullable=False, comment="接口返回值（JSON）")

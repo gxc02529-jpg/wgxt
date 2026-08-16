@@ -22,6 +22,11 @@ class RegisterEditorIn(BaseModel):
     enabled: bool = Field(description="是否允许用户注册为编辑写手")
 
 
+class SplashSwitchIn(BaseModel):
+    """开屏动画开关请求体。"""
+    enabled: bool = Field(description="是否播放登录后的 3D 地球开屏动画")
+
+
 class OssConfigIn(BaseModel):
     """S3 兼容对象存储配置；endpoint 留空 = 本地模式"""
     endpoint: str = Field(default="", max_length=255, description="服务地址，如 https://oss-cn-hangzhou.aliyuncs.com 或 http://127.0.0.1:9000")

@@ -29,6 +29,14 @@ class AITask(Base):
         nullable=False, index=True, comment="发起任务用户ID",
     )
     # 数字含义见本文件顶部注释：1=AI分类 2=AI生成摘要 3=AI多维度审核 4=AI内容校验 5=AI文稿打分
+    article_id = Column(
+        Integer, nullable=True, index=True,
+        comment="关联文稿ID；新建文稿未保存时为NULL，避免跨文稿恢复旧结果",
+    )
+    draft_key = Column(
+        String(64), nullable=True, index=True,
+        comment="草稿会话标识：新建文稿未保存时用于关联同一草稿会话的任务，保存后回填 article_id",
+    )
     feature_type = Column(Integer, nullable=False, index=True, comment="AI功能类型（1=AI分类 2=AI生成摘要 3=AI多维度审核 4=AI内容校验 5=AI文稿打分）")
     status = Column(String(16), nullable=False, default="pending", index=True, comment="任务状态：pending/running/success/failed")
     input_params = Column(JSON, nullable=False, comment="调用入参（JSON，含标题/摘要/正文等）")

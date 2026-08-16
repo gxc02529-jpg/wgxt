@@ -105,6 +105,21 @@
               />
             </div>
           </div>
+
+          <div class="settings-row">
+            <div class="settings-row__info">
+              <div class="settings-row__title">开屏动画</div>
+              <p class="settings-row__desc">登录后是否播放 3D 地球开屏动画；关闭后直接进入门户首页</p>
+            </div>
+            <div class="settings-row__control">
+              <el-switch
+                v-model="splashEnabled"
+                active-text="开启"
+                inactive-text="关闭"
+                @change="saveBool('splash_enabled', splashEnabled)"
+              />
+            </div>
+          </div>
         </div>
       </section>
 
@@ -265,6 +280,7 @@ const kbCount = computed(() => Object.keys(knowledgeBase.value || {}).length)
 // 门户与外观
 const portalTheme = ref('editorial')
 const siteGrayscale = ref(false)
+const splashEnabled = ref(true)
 
 // 账号与积分
 const registerEditorEnabled = ref(true)
@@ -294,6 +310,7 @@ onMounted(async () => {
     autoReview.value = find('auto_review')?.value ?? false
     portalTheme.value = find('portal_theme')?.value || 'editorial'
     siteGrayscale.value = find('site_grayscale')?.value ?? false
+    splashEnabled.value = find('splash_enabled')?.value ?? true
     signinMin.value = find('signin_min_points')?.value ?? 1
     signinMax.value = find('signin_max_points')?.value ?? 5
     knowledgeBase.value = find('ai_knowledge_base')?.value ?? {}
@@ -325,6 +342,7 @@ async function saveBool(key, val) {
   } catch (e) {
     if (key === 'auto_review') autoReview.value = !val
     if (key === 'site_grayscale') siteGrayscale.value = !val
+    if (key === 'splash_enabled') splashEnabled.value = !val
     ElMessage.error(String(e))
   }
 }

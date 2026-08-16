@@ -10,10 +10,15 @@ from ..models.ai_call import AICallLog
 from ..models.user import User
 
 
-def log_ai_call(db: Session, user: User, feature_type: int, inputs: dict, outputs: dict) -> AICallLog:
-    """记录一次 AI 调用：调用人、功能类型、入参、返回值、调用时间"""
+def log_ai_call(
+    db: Session, user: User, feature_type: int, inputs: dict, outputs: dict,
+    article_id: int | None = None, draft_key: str | None = None,
+) -> AICallLog:
+    """记录一次 AI 调用：调用人、功能类型、入参、返回值、调用时间；draft_key 供未保存草稿关联"""
     row = AICallLog(
         user_id=user.id,
+        article_id=article_id,
+        draft_key=draft_key,
         feature_type=feature_type,
         input_params=inputs,
         output_data=outputs,
