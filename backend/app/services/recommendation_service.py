@@ -443,6 +443,7 @@ def _recommend_by_vector(db: Session, user: User, limit: int) -> list[Article]:
     # 进入向量链路先保证内存缓存就绪：无则全量载入，有则增量同步
     _sync_embedding_cache(db)
     try:
+        #计算用户近20篇文稿的向量
         user_vec = _compute_user_vector(db, user)
     except Exception as e:
         # 模型加载/向量化异常不阻断推荐，回退通用推荐
@@ -451,6 +452,7 @@ def _recommend_by_vector(db: Session, user: User, limit: int) -> list[Article]:
     if user_vec is None:
         return _recommend_general(db, user, limit)
 
+    #使用knn计算用户相似度和所有文稿的余弦相似度
     top_ids, explore_ids = _knn_recall(db, user_vec, RECALL_TOP_K)
     ranked = _rerank(top_ids)  # 精排（预留，目前透传）
 
@@ -546,22 +548,28 @@ def _recommend_general(db: Session, user: User | None, limit: int) -> list[Artic
 
     返回：最多 limit 篇已发布 Article 对象。
     """
+    #查询已发布的文稿
     query = db.query(Article).filter(Article.status == "published")
+    #排除用户已观看与不感兴趣的文稿
     if user is not None:
         excluded = _user_excluded_ids(db, user)
         if excluded:
             query = query.filter(~Article.id.in_(excluded))
-
+    #剩下的文稿
     candidates = query.all()
     if not candidates:
         return []
-
+    #拿去文稿的id
     article_ids = [a.id for a in candidates]
+    #查询文稿和栏目的对应关系
     category_map = _collect_category_map(db, article_ids)
+    #根据用户观看记录构建用户画像，如果没登录就是空
     pref = _build_user_preference(db, user)
-
+    #获取当前时间
     now = datetime.now()
     # 热度 min-max 归一化（候选集内）
+    #循环每一篇文稿，利用里面的点赞、分享、观看时长、转发信息进行归一化处理
+    # 各项指标权重如下：浏览 1、点赞 3、收藏 5、转发 2——收藏最难、价值最高，浏览最易、权重最低。
     hot_raw = [
         a.view_count * HOT_WEIGHTS["view_count"]
         + a.like_count * HOT_WEIGHTS["like_count"]
@@ -573,11 +581,16 @@ def _recommend_general(db: Session, user: User | None, limit: int) -> list[Artic
     hot_min = min(hot_raw) if hot_raw else 0
     hot_span = hot_max - hot_min
 
+    #创建每篇文稿的得分空数组，往里面填
     scored: list[tuple[Article, float]] = []
+    # 创建一个文稿-分数的zip后面取着用
     for article, raw_hot in zip(candidates, hot_raw):
         # 新鲜度：指数衰减，距发布越久权重越低
+        #创建时间、发布时间二选一
         published = article.published_at or article.created_at
+        #计算上面时间和现在的差值
         age_days = max(0, (now - published).days)
+        #根据差值计算新鲜度
         fresh = math.exp(-age_days / FRESH_DECAY_DAYS)
         # 热度归一化
         hot = (raw_hot - hot_min) / hot_span if hot_span > 0 else 0.0
@@ -591,13 +604,17 @@ def _recommend_general(db: Session, user: User | None, limit: int) -> list[Artic
         scored.append((article, score))
 
     # 贪心选取 + 分类多样性惩罚：同栏目已选 k 篇后，该栏目剩余候选降权
+    #已经选的文稿列表
     selected: list[Article] = []
+    # 已经选的文稿的所属分类列表
     selected_by_category: dict[int, int] = defaultdict(int)
+    #limit写的选8篇，len(scored)为选了多少篇
     for _ in range(min(limit, len(scored))):
         def effective(item: tuple[Article, float]) -> float:
             article, score = item
             cats = category_map.get(article.id, [])
             hit = max((selected_by_category.get(cid, 0) for cid in cats), default=0)
+            #通用推荐分类多样性惩罚底数
             return score * (DIVERSITY_DECAY ** hit)
 
         best = max(scored, key=effective)

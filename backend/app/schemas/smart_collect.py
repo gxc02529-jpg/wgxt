@@ -14,7 +14,7 @@ class SmartCollectSearchRequest(BaseModel):
         default="week",
         description="新闻时间范围",
     )
-    max_results: int = Field(default=20, ge=1, le=20, description="最大结果数量")
+    max_results: int = Field(default=10, ge=1, le=10, description="最大结果数量")
 
     @field_validator("query", mode="before")
     @classmethod
