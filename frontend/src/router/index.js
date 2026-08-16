@@ -46,6 +46,13 @@ const routes = [
       { path: 'theme', name: 'admin-theme', component: () => import('../views/admin/ThemeManageView.vue'), meta: { roles: ['admin'] } },
     ],
   },
+  // 3D 地球大屏：独立全屏路由，登录后跳转至此
+  {
+    path: '/globe',
+    name: 'globe',
+    component: () => import('../views/GlobeView.vue'),
+    meta: { requiresAuth: true },
+  },
   { path: '/:pathMatch(.*)*', redirect: '/' },
 ]
 

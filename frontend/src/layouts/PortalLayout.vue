@@ -2,7 +2,7 @@
   <!-- 门户报头（编辑风）：品牌行（品牌 + 搜索 + 用户）+ 栏目导航条 + 页脚 -->
   <!-- 主题外壳：非登录页挂载 theme-<key> 类，驱动 CSS 变量换肤 -->
   <div class="portal-shell" :class="shellClass">
-    <header class="masthead">
+    <header v-if="!isAuthPage" class="masthead">
       <div class="container masthead__top">
         <router-link to="/" class="brand" aria-label="文稿发布首页">
           <svg class="brand__logo" viewBox="0 0 32 32" width="30" height="30" aria-hidden="true">
@@ -87,11 +87,11 @@
       </nav>
     </header>
 
-    <main class="site-main">
+    <main class="site-main" :class="{ 'site-main--full': isAuthPage }">
       <router-view />
     </main>
 
-    <footer class="colophon">
+    <footer v-if="!isAuthPage" class="colophon">
       <div class="container colophon__inner">
         <div>
           <strong>文稿发布系统</strong>
@@ -532,6 +532,10 @@ function logout() {
 .site-main {
   flex: 1;
   min-height: calc(100dvh - 280px);
+}
+
+.site-main--full {
+  min-height: 100dvh;
 }
 
 .colophon {

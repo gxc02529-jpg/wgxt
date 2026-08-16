@@ -1,16 +1,12 @@
 <template>
-  <div class="auth-page">
+  <AuthShell>
     <div class="auth-card">
       <router-link to="/" class="auth-card__brand" aria-label="返回首页">
-        <svg viewBox="0 0 32 32" width="26" height="26" aria-hidden="true">
-          <rect width="32" height="32" rx="6" fill="#2563EB" />
-          <path d="M9 9h14v3H12v4h10v3H12v4h11v3H9z" fill="#fff" />
-        </svg>
-        <span>在线融媒体文稿平台</span>
+        <span class="auth-card__dot" aria-hidden="true"></span>
+        <span>瞭望全球，洞见真知</span>
       </router-link>
 
-      <h1 class="auth-card__title">欢迎回来</h1>
-      <p class="auth-card__subtitle">登录文稿发布，参与点赞、收藏与转发</p>
+      <h1 class="auth-card__title">登录开启，与时代同频</h1>
 
       <el-form ref="formRef" :model="form" :rules="rules" label-position="top" size="large" @submit.prevent="submit">
         <el-form-item label="账号" prop="username">
@@ -36,15 +32,15 @@
         <router-link :to="{ name: 'register', query: { redirect: redirect } }">立即注册</router-link>
       </p>
     </div>
+  </AuthShell>
 
-    <!-- 登录后兴趣偏好选择：未设置过且未跳过时弹出 -->
-    <PreferenceDialog
-      v-model="showPref"
-      :categories="prefCategories"
-      @saved="onPrefSaved"
-      @skipped="onPrefSkipped"
-    />
-  </div>
+  <!-- 登录后兴趣偏好选择：未设置过且未跳过时弹出 -->
+  <PreferenceDialog
+    v-model="showPref"
+    :categories="prefCategories"
+    @saved="onPrefSaved"
+    @skipped="onPrefSkipped"
+  />
 </template>
 
 <script setup>
@@ -53,6 +49,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { authApi, categoryApi, preferenceApi } from '../../api'
 import { useAuthStore } from '../../stores/auth'
+import AuthShell from '../../components/AuthShell.vue'
 import PreferenceDialog from '../../features/preference/PreferenceDialog.vue'
 
 const route = useRoute()
@@ -60,7 +57,8 @@ const router = useRouter()
 const auth = useAuthStore()
 const formRef = ref()
 const loading = ref(false)
-const redirect = route.query.redirect || '/'
+const queryRedirect = route.query.redirect || ''
+const redirect = queryRedirect && queryRedirect !== '/' ? queryRedirect : '/globe'
 
 // 兴趣偏好弹窗状态
 const showPref = ref(false)
@@ -79,6 +77,7 @@ async function submit() {
     const res = await authApi.login(form)
     auth.setSession(res.access_token, res.user)
     ElMessage.success('登录成功')
+    // 登录成功后默认进入 3D 地球大屏；若来自受保护页面则回到原页面
     await maybeOpenPreference(res.user)
   } catch (e) {
     ElMessage.error(String(e))
@@ -120,64 +119,92 @@ function onPrefSkipped() {
   showPref.value = false
   router.push(redirect)
 }
+
 </script>
 
 <style scoped>
-/* Hallmark · genre: editorial · macrostructure: Form · design-system: design.md · designed-as-app */
-/* Hallmark · pre-emit critique: P4 H4 E4 S4 R4 V4 */
-.auth-page {
-  min-height: calc(100dvh - 280px);
-  display: grid;
-  place-items: center;
-  padding: var(--space-6) var(--space-4);
-}
-
+/* 玻璃拟态登录卡 */
 .auth-card {
   width: 100%;
-  max-width: 420px;
-  background: var(--color-paper);
-  border: var(--rule) solid var(--color-rule);
-  border-top: 3px solid var(--color-accent);
-  border-radius: var(--radius-sm);
-  padding: var(--space-6);
+  background: rgba(8, 18, 34, 0.55);
+  backdrop-filter: blur(16px) saturate(1.25);
+  -webkit-backdrop-filter: blur(16px) saturate(1.25);
+  border: 1px solid rgba(120, 180, 235, 0.2);
+  border-radius: 18px;
+  padding: 32px 30px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.06);
 }
 
 .auth-card__brand {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   font-family: var(--font-heading);
-  font-size: 18px;
+  font-size: 16px;
   font-weight: 700;
-  color: var(--color-ink);
-  margin-bottom: var(--space-6);
+  letter-spacing: 0.12em;
+  color: #eaf4ff;
+  margin-bottom: 26px;
+}
+
+.auth-card__dot {
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 35%, #9fd6ff, #2f7fe0 60%, #14325c);
+  box-shadow: 0 0 14px rgba(80, 160, 255, 0.9);
 }
 
 .auth-card__title {
   font-family: var(--font-heading);
-  font-size: var(--text-3xl);
+  font-size: 28px;
   font-weight: 700;
-  color: var(--color-ink);
-  margin-bottom: var(--space-2);
+  letter-spacing: 1px;
+  margin-bottom: 24px;
+  background: linear-gradient(120deg, #eaf4ff 0%, #9fd6ff 45%, #6db6ff 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
 }
 
-.auth-card__subtitle {
-  color: var(--color-ink-2);
-  margin: 0 0 var(--space-5);
-  font-size: var(--text-sm);
+.auth-card :deep(.el-form-item__label) {
+  color: rgba(190, 215, 240, 0.85);
+}
+
+.auth-card :deep(.el-input__wrapper) {
+  background: rgba(6, 16, 30, 0.55);
+  border: 1px solid rgba(120, 180, 235, 0.2);
+  box-shadow: none;
+  border-radius: 10px;
+}
+
+.auth-card :deep(.el-input__wrapper.is-focus) {
+  border-color: rgba(90, 170, 255, 0.6);
+  box-shadow: 0 0 0 3px rgba(70, 150, 255, 0.16);
+}
+
+.auth-card :deep(.el-input__inner) {
+  color: #eaf4ff;
 }
 
 .auth-card__submit {
   width: 100%;
   min-height: var(--size-touch);
   margin-top: var(--space-1);
+  border: none;
+  background: linear-gradient(135deg, #6db6ff, #3d8bf0);
+}
+
+.auth-card__submit:hover {
+  background: linear-gradient(135deg, #7cc1ff, #4a96f5);
 }
 
 .auth-card__switch {
   text-align: center;
-  color: var(--color-ink-2);
-  font-size: var(--text-sm);
-  margin: var(--space-5) 0 0;
+  color: rgba(160, 200, 240, 0.72);
+  font-size: 14px;
+  margin: 22px 0 0;
 }
 
 .auth-card__switch a {
@@ -185,7 +212,7 @@ function onPrefSkipped() {
   align-items: center;
   min-height: var(--size-touch);
   padding: 0 6px;
-  color: var(--color-accent);
+  color: #7fc6ff;
   font-weight: 500;
 }
 </style>

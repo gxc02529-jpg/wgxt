@@ -1,12 +1,9 @@
 <template>
-  <div class="auth-page">
+  <AuthShell>
     <div class="auth-card">
       <router-link to="/" class="auth-card__brand" aria-label="返回首页">
-        <svg viewBox="0 0 32 32" width="26" height="26" aria-hidden="true">
-          <rect width="32" height="32" rx="6" fill="#2563EB" />
-          <path d="M9 9h14v3H12v4h10v3H12v4h11v3H9z" fill="#fff" />
-        </svg>
-        <span>在线融媒体文稿平台</span>
+        <span class="auth-card__dot" aria-hidden="true"></span>
+        <span>星球新闻</span>
       </router-link>
 
       <h1 class="auth-card__title">注册账号</h1>
@@ -44,7 +41,7 @@
         <router-link :to="{ name: 'login', query: { redirect: redirect } }">去登录</router-link>
       </p>
     </div>
-  </div>
+  </AuthShell>
 </template>
 
 <script setup>
@@ -52,6 +49,7 @@ import { onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { authApi, portalApi } from '../../api'
+import AuthShell from '../../components/AuthShell.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -83,17 +81,6 @@ const rules = {
   ],
 }
 
-// 拉取编辑注册策略：关闭时隐藏"编辑（可写稿）"选项
-onMounted(async () => {
-  try {
-    const res = await portalApi.registerEditor()
-    editorRegisterEnabled.value = res.enabled
-    if (!res.enabled && form.role === 'editor') form.role = 'user'
-  } catch {
-    // 拉取失败按开启处理，不阻塞注册
-  }
-})
-
 async function submit() {
   await formRef.value.validate()
   loading.value = true
@@ -113,64 +100,107 @@ async function submit() {
     loading.value = false
   }
 }
+
+// 拉取编辑注册策略：关闭时隐藏“编辑（可写稿）”选项
+onMounted(async () => {
+  try {
+    const res = await portalApi.registerEditor()
+    editorRegisterEnabled.value = res.enabled
+    if (!res.enabled && form.role === 'editor') form.role = 'user'
+  } catch {
+    // 拉取失败按开启处理，不阻塞注册
+  }
+})
+
 </script>
 
 <style scoped>
-/* Hallmark · genre: editorial · macrostructure: Form · design-system: design.md · designed-as-app */
-/* Hallmark · pre-emit critique: P4 H4 E4 S4 R4 V4 */
-.auth-page {
-  min-height: calc(100dvh - 280px);
-  display: grid;
-  place-items: center;
-  padding: var(--space-6) var(--space-4);
-}
-
+/* 玻璃拟态注册卡（与登录卡同款） */
 .auth-card {
   width: 100%;
-  max-width: 440px;
-  background: var(--color-paper);
-  border: var(--rule) solid var(--color-rule);
-  border-top: 3px solid var(--color-accent);
-  border-radius: var(--radius-sm);
-  padding: var(--space-6);
+  background: rgba(8, 18, 34, 0.55);
+  backdrop-filter: blur(16px) saturate(1.25);
+  -webkit-backdrop-filter: blur(16px) saturate(1.25);
+  border: 1px solid rgba(120, 180, 235, 0.2);
+  border-radius: 18px;
+  padding: 32px 30px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.06);
 }
 
 .auth-card__brand {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   font-family: var(--font-heading);
-  font-size: 18px;
+  font-size: 19px;
   font-weight: 700;
-  color: var(--color-ink);
-  margin-bottom: var(--space-6);
+  color: #eaf4ff;
+  margin-bottom: 28px;
+}
+
+.auth-card__dot {
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 35%, #9fd6ff, #2f7fe0 60%, #14325c);
+  box-shadow: 0 0 14px rgba(80, 160, 255, 0.9);
 }
 
 .auth-card__title {
   font-family: var(--font-heading);
-  font-size: var(--text-3xl);
+  font-size: 28px;
   font-weight: 700;
-  color: var(--color-ink);
-  margin-bottom: var(--space-2);
+  color: #eaf4ff;
+  margin-bottom: 6px;
 }
 
 .auth-card__subtitle {
-  color: var(--color-ink-2);
-  margin: 0 0 var(--space-5);
-  font-size: var(--text-sm);
+  color: rgba(160, 200, 240, 0.72);
+  margin: 0 0 24px;
+  font-size: 14px;
+}
+
+.auth-card :deep(.el-form-item__label) {
+  color: rgba(190, 215, 240, 0.85);
+}
+
+.auth-card :deep(.el-input__wrapper) {
+  background: rgba(6, 16, 30, 0.55);
+  border: 1px solid rgba(120, 180, 235, 0.2);
+  box-shadow: none;
+  border-radius: 10px;
+}
+
+.auth-card :deep(.el-input__wrapper.is-focus) {
+  border-color: rgba(90, 170, 255, 0.6);
+  box-shadow: 0 0 0 3px rgba(70, 150, 255, 0.16);
+}
+
+.auth-card :deep(.el-input__inner) {
+  color: #eaf4ff;
+}
+
+.auth-card :deep(.el-radio) {
+  color: rgba(190, 215, 240, 0.85);
 }
 
 .auth-card__submit {
   width: 100%;
   min-height: var(--size-touch);
   margin-top: var(--space-1);
+  border: none;
+  background: linear-gradient(135deg, #6db6ff, #3d8bf0);
+}
+
+.auth-card__submit:hover {
+  background: linear-gradient(135deg, #7cc1ff, #4a96f5);
 }
 
 .auth-card__switch {
   text-align: center;
-  color: var(--color-ink-2);
-  font-size: var(--text-sm);
-  margin: var(--space-5) 0 0;
+  color: rgba(160, 200, 240, 0.72);
+  font-size: 14px;
+  margin: 22px 0 0;
 }
 
 .auth-card__switch a {
@@ -178,7 +208,7 @@ async function submit() {
   align-items: center;
   min-height: var(--size-touch);
   padding: 0 6px;
-  color: var(--color-accent);
+  color: #7fc6ff;
   font-weight: 500;
 }
 </style>
