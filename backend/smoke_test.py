@@ -528,7 +528,8 @@ def main():
             # 摘要已接入真实 Dify 工作流，断言返回非空摘要文本（占位/真实实现均成立）
             ("summary", {"title": ai_title, "content": ai_content}, lambda d: bool(str(d.get("summary", "")).strip())),
             ("review", {"title": ai_title, "content": ai_content}, lambda d: set(d) >= {"色情内容", "用语文明"}),
-            ("check", {"content": ai_content}, lambda d: len(d.get("items", [])) >= 2),
+            # 内容校验已接入真实 Dify 工作流 article_neirong，断言返回 items 列表即可（条数取决于模型）
+            ("check", {"content": ai_content}, lambda d: isinstance(d.get("items"), list)),
             ("score", {"content": ai_content}, lambda d: d["总分"] == "80/100"),
         ]
         for name, payload, check in cases:
@@ -791,6 +792,52 @@ def main():
         r = client.delete(f"{BASE}/settings/ai_knowledge_base", headers=admin_h)
         assert r.status_code == 200, f"恢复知识库失败: {r.text}"
         print("[23] 知识库已恢复（回退本地文件）")
+
+    if should_run(24):
+        # 24. Dify 工作流：编辑时留空/掩码 Key 不覆盖真实 Key（回归 5927cc2 + 自动填充防护）
+        wf_name = f"smoke_dify_{uniq}"
+        wf_key = "app-smoke-test-key-1234567890"
+        wf_payload = {
+            "name": wf_name,
+            "api_base": "http://127.0.0.1:8080/v1",
+            "api_key": wf_key,
+            "description": "冒烟测试工作流",
+            "input_schema": {"title": "标题"},
+            "enabled": True,
+            "timeout": 30,
+        }
+        r = client.post(f"{BASE}/dify/workflows", headers=admin_h, json=wf_payload)
+        assert r.status_code == 200, f"创建 Dify 工作流失败: {r.text}"
+        wf_id = r.json()["workflow"]["id"]
+        print(f"[24] 创建临时 Dify 工作流 OK  id={wf_id}")
+
+        # 列表返回掩码 Key（**** 后四位）
+        r = client.get(f"{BASE}/dify/workflows", headers=admin_h)
+        row = next(x for x in r.json()["items"] if x["id"] == wf_id)
+        assert row["api_key"] == "****7890", f"掩码 Key 异常: {row['api_key']}"
+        masked_before = row["api_key"]
+
+        edit_payload = {
+            "name": wf_name, "api_base": "http://127.0.0.1:8080/v1",
+            "description": "冒烟测试工作流（编辑）", "input_schema": {"title": "标题"},
+            "enabled": True, "timeout": 30,
+        }
+        # 掩码占位 Key 提交：不覆盖真实 Key
+        r = client.put(f"{BASE}/dify/workflows/{wf_id}", headers=admin_h,
+                       json={**edit_payload, "api_key": "****FAKE"})
+        assert r.status_code == 200, f"掩码 Key 编辑失败: {r.text}"
+        assert r.json()["workflow"]["api_key"] == masked_before, "掩码 Key 不应覆盖真实 Key"
+        # 空 Key 提交：不覆盖真实 Key
+        r = client.put(f"{BASE}/dify/workflows/{wf_id}", headers=admin_h,
+                       json={**edit_payload, "api_key": ""})
+        assert r.status_code == 200, f"空 Key 编辑失败: {r.text}"
+        assert r.json()["workflow"]["api_key"] == masked_before, "空 Key 不应覆盖真实 Key"
+        print("[24] 留空/掩码 Key 不覆盖真实 Key OK")
+
+        # 清理临时工作流
+        r = client.delete(f"{BASE}/dify/workflows/{wf_id}", headers=admin_h)
+        assert r.status_code == 200, f"删除临时工作流失败: {r.text}"
+        print("[24] 临时工作流已清理 OK")
 
     print("\nALL SMOKE TESTS PASSED")
 

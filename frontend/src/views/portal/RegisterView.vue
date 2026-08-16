@@ -164,20 +164,54 @@ onMounted(async () => {
   color: rgba(190, 215, 240, 0.85);
 }
 
+/* 输入控件主题：统一覆盖 Element Plus 输入变量（挂在 .el-input 根上才能覆盖其默认值） */
+.auth-card :deep(.el-input) {
+  --el-input-bg-color: rgba(10, 24, 44, 0.62);
+  --el-input-hover-fill-color: rgba(14, 30, 54, 0.74);
+  --el-input-text-color: #eaf4ff;
+  --el-input-placeholder-color: rgba(150, 195, 240, 0.42);
+  --el-input-border-color: rgba(120, 180, 235, 0.28);
+  --el-input-hover-border-color: rgba(130, 195, 255, 0.55);
+  --el-input-focus-border-color: rgba(110, 185, 255, 0.9);
+}
+
 .auth-card :deep(.el-input__wrapper) {
-  background: rgba(6, 16, 30, 0.55);
-  border: 1px solid rgba(120, 180, 235, 0.2);
+  background: var(--el-input-bg-color);
+  border: 1px solid var(--el-input-border-color);
   box-shadow: none;
   border-radius: 10px;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, background-color 0.2s ease;
+}
+
+.auth-card :deep(.el-input__wrapper:hover) {
+  border-color: var(--el-input-hover-border-color);
+  background-color: var(--el-input-hover-fill-color);
 }
 
 .auth-card :deep(.el-input__wrapper.is-focus) {
-  border-color: rgba(90, 170, 255, 0.6);
+  border-color: var(--el-input-focus-border-color);
   box-shadow: 0 0 0 3px rgba(70, 150, 255, 0.16);
+  background-color: rgba(12, 28, 52, 0.78);
 }
 
 .auth-card :deep(.el-input__inner) {
-  color: #eaf4ff;
+  color: var(--el-input-text-color);
+  caret-color: #9fd6ff;
+}
+
+/* 占位符：主题蓝灰，替代 Element Plus 默认中性灰 */
+.auth-card :deep(.el-input__inner::placeholder) {
+  color: var(--el-input-placeholder-color);
+}
+
+/* Chrome 自动填充：保持深色玻璃底，避免白/浅蓝底突兀 */
+.auth-card :deep(.el-input__wrapper input:-webkit-autofill),
+.auth-card :deep(.el-input__wrapper input:-webkit-autofill:hover),
+.auth-card :deep(.el-input__wrapper input:-webkit-autofill:focus) {
+  -webkit-text-fill-color: #eaf4ff;
+  -webkit-box-shadow: 0 0 0 1000px rgba(10, 24, 44, 0.92) inset;
+  transition: background-color 999999s ease-in-out 0s;
+  caret-color: #9fd6ff;
 }
 
 .auth-card :deep(.el-radio) {

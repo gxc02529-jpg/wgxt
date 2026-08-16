@@ -242,7 +242,7 @@
             <el-input v-model="ossForm.access_key" placeholder="Access Key" />
           </el-form-item>
           <el-form-item label="Secret Key">
-            <el-input v-model="ossForm.secret_key" type="password" show-password placeholder="已设置显示 ****，留空保留原值" />
+            <el-input v-model="ossForm.secret_key" type="password" show-password placeholder="已设置显示 ****，留空保留原值" autocomplete="new-password" />
           </el-form-item>
           <el-form-item label="Path Prefix（可选）">
             <el-input v-model="ossForm.path_prefix" placeholder="如 articles/" />

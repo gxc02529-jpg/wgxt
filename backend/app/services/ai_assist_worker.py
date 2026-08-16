@@ -66,11 +66,71 @@ def _extract_summary_from_outputs(outputs) -> str:
 
 
 
-def dispatch(feature_type: int, inputs: dict) -> dict:
+def _try_json(text: str):
+    """尝试把字符串按 JSON 解析，失败返回 None"""
+    try:
+        return json.loads(text)
+    except (ValueError, TypeError):
+        return None
+
+
+def _load_prev_check(task_id, article_id, draft_key):
+    """查询同一文稿上次内容校验的结果与正文，作为 last_llm / old_text 入参
+
+    按当前任务归属的文稿（已保存用 article_id，未保存草稿用 draft_key）取最近一次成功任务；
+    首次调用或没有历史时返回空串，避免把无关文稿的历史带进来。
+    """
+    db = SessionLocal()
+    try:
+        query = db.query(AITask).filter(
+            AITask.feature_type == FEATURE_CHECK,
+            AITask.status == "success",
+        )
+        if article_id is not None:
+            query = query.filter(AITask.article_id == article_id)
+        elif draft_key:
+            query = query.filter(AITask.draft_key == draft_key)
+        else:
+            return "", ""
+        if task_id is not None:
+            query = query.filter(AITask.id != task_id)
+        prev = query.order_by(AITask.id.desc()).first()
+        if not prev:
+            return "", ""
+        # last_llm = 上次 Dify 工作流返回结果（JSON 串）；old_text = 上次调用时的正文
+        last_llm = json.dumps(prev.result_data, ensure_ascii=False) if prev.result_data else ""
+        old_text = (prev.input_params or {}).get("content") or ""
+        return last_llm, old_text
+    finally:
+        db.close()
+
+
+def _extract_check_items(outputs) -> list:
+    """从 Dify outputs 中提取内容校验错误列表（[{错误类型,原文位置,修改结果,修改建议}, ...]）
+
+    Dify 结束节点可能直接返回数组，也可能返回 {"text": "[...json 数组...]"} 等包装结构，统一解析。
+    """
+    raw = outputs
+    if isinstance(raw, str):
+        raw = _try_json(raw) or raw
+    if isinstance(raw, dict):
+        for key in ("items", "result", "outputs", "data", "text"):
+            if isinstance(raw.get(key), (list, str)):
+                raw = raw[key]
+                break
+    if isinstance(raw, str):
+        raw = _try_json(raw) or []
+    if not isinstance(raw, list):
+        return []
+    return [it for it in raw if isinstance(it, dict)]
+
+
+def dispatch(feature_type: int, inputs: dict, context: dict | None = None) -> dict:
     """AI 功能执行入口（占位假实现）
 
     接入真实 AI 能力时，仅需在本函数内按 feature_type 调用真实模型 / Dify 工作流
     （如 run_workflow），保持返回值结构与假实现一致即可。
+    context 可选：携带当前任务信息（task_id 等），用于查询同一文稿的历史调用。
     """
     title = (inputs.get("title") or "").strip()
     content = (inputs.get("content") or "").strip()
@@ -115,22 +175,27 @@ def dispatch(feature_type: int, inputs: dict) -> dict:
     if feature_type == FEATURE_CHECK:
         if not content:
             raise ValueError("请先填写文稿正文")
-        return {
-            "items": [
-                {
-                    "错误类型": "标点错误",
-                    "原文位置": "的问题。因此",
-                    "修改结果": "的问题？因此",
-                    "修改建议": "提出疑问要用问号",
+
+        # 内容校验：把上一次校验的结果(last_llm)与当时正文(old_text)连同本次正文(now_text)
+        # 一起传给 Dify 工作流 article_neirong，支持基于历史错误的增量纠错；首次调用历史为空串
+        article_id = inputs.get("article_id") or None
+        draft_key = inputs.get("draft_key") or None
+        last_llm, old_text = _load_prev_check((context or {}).get("task_id"), article_id, draft_key)
+        db = SessionLocal()
+        try:
+            data = run_workflow(
+                db,
+                inputs={
+                    "last_llm": last_llm,
+                    "now_text": content,
+                    "old_text": old_text,
                 },
-                {
-                    "错误类型": "错别字",
-                    "原文位置": "用户登陆的问题",
-                    "修改结果": "用户登录的问题",
-                    "修改建议": "登陆为错别字",
-                },
-            ]
-        }
+                name="article_neirong",
+            )
+        finally:
+            db.close()
+        # 返回结构固定为 {"items": [...]}，前端 checkItems 直接渲染并支持高亮定位
+        return {"items": _extract_check_items(data.get("outputs") or {})}
 
     if feature_type == FEATURE_SCORE:
         if not content:
@@ -159,7 +224,7 @@ def _execute_task(task_id: int) -> None:
 
         user = db.get(User, task.user_id)
         try:
-            result = dispatch(task.feature_type, task.input_params or {})
+            result = dispatch(task.feature_type, task.input_params or {}, context={"task_id": task.id})
             task.status = "success"
             task.result_data = result
             task.error_message = None

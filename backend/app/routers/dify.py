@@ -59,8 +59,10 @@ def update_workflow(
         raise HTTPException(400, "工作流标识已存在")
     row.name = body.name
     row.api_base = body.api_base
-    if body.api_key and body.api_key.strip():
-        row.api_key = body.api_key.strip()
+    # 仅当传入非空且非掩码占位（**** 开头）的 Key 时才覆盖，编辑时留空/掩码保留原 Key
+    new_key = (body.api_key or "").strip()
+    if new_key and not new_key.startswith("****"):
+        row.api_key = new_key
     row.description = body.description
     row.input_schema = body.input_schema
     row.enabled = body.enabled

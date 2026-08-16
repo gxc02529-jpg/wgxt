@@ -10,7 +10,7 @@ class DifyWorkflowIn(BaseModel):
         description="业务标识（唯一，如 article_summary）",
     )
     api_base: str = Field(min_length=1, max_length=255, description="Dify API 地址")
-    api_key: str | None = Field(default=None, min_length=1, max_length=255, description="Dify 应用 API Key，编辑时留空表示保留原 Key")
+    api_key: str | None = Field(default=None, max_length=255, description="Dify 应用 API Key，编辑时留空/传空表示保留原 Key")
     description: str = Field(default="", max_length=500, description="用途说明")
     input_schema: dict = Field(default_factory=dict, description="输入参数说明（JSON）")
     enabled: bool = True

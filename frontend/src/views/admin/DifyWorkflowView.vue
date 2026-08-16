@@ -58,7 +58,7 @@
           <el-input v-model="form.api_base" placeholder="https://api.dify.ai/v1 或自建地址" />
         </el-form-item>
         <el-form-item label="API Key" required>
-          <el-input v-model="form.api_key" placeholder="app-xxx；编辑时留空保留原 Key" show-password />
+          <el-input v-model="form.api_key" placeholder="app-xxx；编辑时留空保留原 Key" show-password autocomplete="new-password" />
         </el-form-item>
         <el-form-item label="用途说明">
           <el-input v-model="form.description" placeholder="这个工作流用来做什么" />
@@ -191,10 +191,12 @@ async function save() {
     return
   }
   const apiKey = form.api_key.trim()
+  // 编辑时：空值或掩码占位（**** 开头）都视为未修改，不提交 api_key，避免覆盖真实 Key
+  const apiKeyUnchanged = dialog.isEdit && (!apiKey || apiKey.startsWith('****'))
   const payload = {
     name: form.name.trim(),
     api_base: form.api_base.trim(),
-    ...(apiKey ? { api_key: apiKey } : {}),
+    ...(apiKey && !apiKeyUnchanged ? { api_key: apiKey } : {}),
     description: form.description,
     input_schema: inputSchema,
     enabled: form.enabled,

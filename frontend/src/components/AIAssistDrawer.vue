@@ -88,7 +88,8 @@
         <div class="ai-field ai-field--content">
           <div class="ai-field__row">
             <label class="ai-label" for="ai-content">正文</label>
-            <span v-if="highlightHint" class="ai-highlight-hint">{{ highlightHint }}</span>
+            <span v-if="editTab === 'edit' && locateHint" class="ai-highlight-hint">{{ locateHint }}</span>
+            <span v-else-if="editTab === 'preview' && highlightHint" class="ai-highlight-hint">{{ highlightHint }}</span>
           </div>
           <RichTextEditor
             v-if="editTab === 'edit'"
@@ -237,6 +238,7 @@
             </el-button>
           </div>
           <div v-if="checkItems.length" class="ai-tool__result ai-check">
+            <p class="ai-check__hint">点击条目：在正文中定位选中错误位置，并复制「修改结果」</p>
             <button
               v-for="(item, index) in checkItems"
               :key="index"
@@ -304,7 +306,7 @@
 </template>
 
 <script setup>
-import { computed, reactive, ref, watch } from 'vue'
+import { computed, nextTick, reactive, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import {
   CircleCheck, CircleClose, Collection, Document, EditPen, MagicStick, Trophy, Warning,
@@ -347,6 +349,7 @@ const summaryResult = ref('')
 const reviewItems = ref([])
 const checkItems = ref([])
 const activeCheckIndex = ref(-1)
+const locateHint = ref('')
 const scoreItems = ref([])
 const scoreTotal = ref('')
 
@@ -400,16 +403,91 @@ const previewHtml = computed(() => {
 })
 const escapedContent = computed(() => escHtml(contentText.value))
 
-function locateError(index) {
+// 在可编辑正文中定位并选中指定文本（跨文本节点查找，滚动到可见区域）
+function selectTextInEditor(text) {
+  const editorEl = document.querySelector('.ai-edit [data-slate-editor]')
+  if (!editorEl || !text) return false
+  const textNodes = []
+  const walker = document.createTreeWalker(editorEl, NodeFilter.SHOW_TEXT)
+  let node
+  while ((node = walker.nextNode())) {
+    const v = node.nodeValue || ''
+    if (v.length) textNodes.push({ node, v })
+  }
+  let total = ''
+  const starts = []
+  for (const t of textNodes) {
+    starts.push(total.length)
+    total += t.v
+  }
+  const pos = total.indexOf(text)
+  if (pos < 0) return false
+  let startIdx = 0
+  while (startIdx < starts.length - 1 && starts[startIdx + 1] <= pos) startIdx += 1
+  const end = pos + text.length
+  let endIdx = startIdx
+  while (endIdx < starts.length - 1 && starts[endIdx + 1] < end) endIdx += 1
+  const range = document.createRange()
+  range.setStart(textNodes[startIdx].node, pos - starts[startIdx])
+  range.setEnd(textNodes[endIdx].node, end - starts[endIdx])
+  const sel = window.getSelection()
+  sel.removeAllRanges()
+  sel.addRange(range)
+  const rect = range.getBoundingClientRect()
+  if (rect) {
+    ;(editorEl.closest('.ai-edit') || editorEl).scrollIntoView({ behavior: 'smooth', block: 'center' })
+  }
+  return true
+}
+
+// 复制文本到剪贴板（优先 Clipboard API，降级 execCommand）
+async function copyText(text) {
+  try {
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(text)
+      return true
+    }
+  } catch {
+    // 继续走兜底
+  }
+  const ta = document.createElement('textarea')
+  ta.value = text
+  ta.setAttribute('readonly', '')
+  ta.style.position = 'fixed'
+  ta.style.left = '-9999px'
+  document.body.appendChild(ta)
+  ta.select()
+  let ok = false
+  try {
+    ok = document.execCommand('copy')
+  } catch {
+    ok = false
+  }
+  document.body.removeChild(ta)
+  return ok
+}
+
+async function locateError(index) {
   activeCheckIndex.value = index
   const item = checkItems.value[index]
   if (!item) return
-  if (!contentText.value.includes(item['原文位置'] || '')) {
+  const pos = item['原文位置'] || ''
+  const fix = item['修改结果'] || ''
+  if (!contentText.value.includes(pos)) {
     ElMessage.warning('正文中未找到该原文位置（可能已被修改）')
     return
   }
-  editTab.value = 'preview'
-  ElMessage.success(`已在正文中高亮「${item['原文位置']}」`)
+  // 切回可编辑模式并在正文中选中错误位置，便于用户直接修改
+  editTab.value = 'edit'
+  await nextTick()
+  const located = selectTextInEditor(pos)
+  const copied = await copyText(fix)
+  locateHint.value = `已选中「${pos}」，可直接修改；修改结果${copied ? '已复制' : '复制失败，请手动复制'}`
+  if (located) {
+    ElMessage.success(copied ? `已定位「${pos}」并复制修改结果「${fix}」` : `已定位「${pos}」，修改结果复制失败`)
+  } else {
+    ElMessage.warning('正文中未找到该原文位置（可能已被修改）')
+  }
 }
 
 function scorePercent(point) {
@@ -552,6 +630,7 @@ watch(
       reviewItems.value = []
       checkItems.value = []
       activeCheckIndex.value = -1
+      locateHint.value = ''
       scoreItems.value = []
       scoreTotal.value = ''
       Object.keys(loading).forEach((key) => { loading[key] = false })
@@ -942,6 +1021,12 @@ watch(
 .ai-check__item.is-active {
   border-color: var(--color-danger, #dc2626);
   background: #fef2f2;
+}
+
+.ai-check__hint {
+  margin: 0 0 6px;
+  font-size: 12px;
+  color: var(--color-ink-3, #94a3b8);
 }
 
 .ai-check__type {
