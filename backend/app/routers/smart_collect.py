@@ -326,7 +326,28 @@ async def get_similarity_pairs(
     db: Session = Depends(get_db),
     user: User = Depends(require_roles("editor", "admin")),
 ):
-    """只读批量Embedding分析，不改semantic_score或任何新闻数据。"""
+    """分析同一采编任务内语义最相似的新闻线索对。
+
+    功能：
+    - 用于编辑判断“哪两条新闻内容最像”，可作为人工分组事件的参考；
+    - 只读操作，不会修改 semantic_score、线索、事件或任何数据。
+
+    请求参数：
+    - task_id：采编任务ID；
+    - limit：返回最多多少条最相似 pair，默认10，范围1~50。
+
+    权限：编辑/管理员。管理员可看全部任务；
+    编辑只能看自己创建的任务，否则返回404。
+
+    返回：
+    - clue_count：参与分析的线索数量；
+    - pair_count：理论两两组合数；
+    - items：按 similarity_score 降序的前 limit 条线索对。
+
+    错误语义：
+    - 404：任务不存在或当前编辑无权查看；
+    - 503：语义计算服务不可用。
+    """
     service = SmartCollectSimilarityService(get_embedding_service())
     try:
         return await service.analyze(db, task_id, user, limit)

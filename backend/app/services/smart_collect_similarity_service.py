@@ -1,5 +1,13 @@
 # -*- coding: utf-8 -*-
-"""同一采编任务内新闻线索之间的只读语义相似度分析。"""
+"""同一采编任务内新闻线索之间的只读语义相似度分析。
+
+该服务不修改任何数据，只用于给编辑提供“哪两条新闻内容最像”的判断参考。
+算法流程：
+1. 从 smart_collect_task_clues + news_clues 读取当前任务全部线索（标题+摘要）；
+2. 用 multilingual-e5-small 一次批量生成归一化 passage 向量；
+3. 任意两条线索计算点积（即余弦相似度），得到 n*(n-1)/2 个不重复 pair；
+4. 按相似度降序返回前 limit 条。
+"""
 from dataclasses import dataclass
 import math
 
@@ -14,7 +22,11 @@ from .smart_collect_service import SmartCollectTaskNotFoundError
 
 @dataclass(frozen=True)
 class SimilarityClueSnapshot:
-    """模型线程使用的普通Python快照，不携带Session或ORM对象。"""
+    """模型线程使用的普通Python快照，不携带Session或ORM对象。
+
+    因为 Embedding 推理可能耗时，需要在读取完数据后立即结束数据库事务；
+    后续只传递本快照，避免多线程共用 Session 导致关联对象失效。
+    """
 
     clue_id: int
     rank: int
@@ -32,13 +44,24 @@ class SimilarityClueSnapshot:
 
 
 class SmartCollectSimilarityService:
-    """读取任务线索、批量Embedding并计算不重复的i<j相似pair。"""
+    """读取任务线索、批量Embedding并计算不重复的i<j相似pair。
+
+    特性：
+    - 只读操作，不写 semantic_score、不改线索、不建事件；
+    - 权限与任务详情一致：管理员可看全部，编辑只能看自己创建的任务；
+    - 每次请求都会重新计算，不依赖缓存，保证最新线索参与分析。
+    """
 
     def __init__(self, embedding_service: PassageEmbedder):
         self.embedding_service = embedding_service
 
     @staticmethod
     def _build_clue_text(title: str, snippet: str) -> str:
+        """拼接线索的语义被编码文本：标题+摘要，没有摘要时只用标题。
+
+        与采编任务评分时的文本规则保持一致，
+        避免同一条新闻因文本拼装不同得到不稳定的向量。
+        """
         clean_title = title.strip()
         clean_snippet = snippet.strip()
         return f"{clean_title}\n{clean_snippet}" if clean_snippet else clean_title
@@ -50,7 +73,12 @@ class SmartCollectSimilarityService:
         task_id: int,
         user: User,
     ) -> tuple[str, list[SimilarityClueSnapshot]]:
-        """完成数据库读取后回滚只读事务，再返回普通Python数据。"""
+        """加载任务及其全部线索，并转成无Session快照。
+
+        权限规则：admin 可读任何任务；editor 只能读自己创建的任务。
+        读取完成后立即 db.rollback()，释放连接和事务，
+        确保后续模型推理在数据库事务外执行。
+        """
         try:
             task = db.get(SmartCollectTask, task_id)
             if not task or (user.role != "admin" and task.creator_id != user.id):
@@ -86,6 +114,11 @@ class SmartCollectSimilarityService:
 
     @staticmethod
     def _validate_embeddings(embeddings, expected_count: int) -> list[list[float]]:
+        """校验批量结果：数量、维度、有限数值都必须合法。
+
+        如果模型返回数量不对或包含 NaN/Inf，
+        直接引发 EmbeddingServiceError，避免用坏数据计算出假相似度。
+        """
         if len(embeddings) != expected_count:
             raise EmbeddingServiceError
         vectors: list[list[float]] = []
@@ -106,6 +139,12 @@ class SmartCollectSimilarityService:
 
     @staticmethod
     def _dot_product(left: list[float], right: list[float]) -> float:
+        """计算两个归一化向量的点积（即余弦相似度）。
+
+        EmbeddingService 已在 encode 时 normalize_embeddings=True，
+        所以这里直接点积就等价于余弦相似度，
+        并把浮点计算产生的小越界成本裁断到 [-1,1]。
+        """
         score = sum(a * b for a, b in zip(left, right))
         if not math.isfinite(score):
             raise EmbeddingServiceError
@@ -119,6 +158,14 @@ class SmartCollectSimilarityService:
         user: User,
         limit: int = 10,
     ) -> dict:
+        """执行一次完整的任务内线索相似度分析。
+
+        1. 读取线索快照（权限无法通过时返回 404，不泄露任务是否存在）；
+        2. 线索不足 2 条时直接返回空数组，不调用模型；
+        3. 一次批量生成全部 passage 向量，避免逐条调用模型；
+        4. 穷举组合计算点积，按相似度降序，同分时用 rank/clue_id 稳定排序；
+        5. 只返回前 limit 条，不保存任何结果。
+        """
         if not 1 <= limit <= 50:
             raise ValueError("limit必须在1到50之间")
 

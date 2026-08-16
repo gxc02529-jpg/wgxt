@@ -200,24 +200,34 @@ class SmartCollectEvaluationOutliers(BaseModel):
 
 
 class SmartCollectSimilarityClue(BaseModel):
-    clue_id: int
-    rank: int = Field(ge=1)
-    title: str
-    source: str
+    """相似度对中的单条新闻线索（只读快照，不含正文/评分）。
+
+    前端只展示线索身份信息；具体相似度由 Pair 的 similarity_score 给出。
+    """
+    clue_id: int  # 新闻线索唯一ID（news_clues.id）
+    rank: int = Field(ge=1)  # 线索在本次采编任务中的搜索排名，从1开始
+    title: str  # 新闻标题
+    source: str  # 来源域名（如 xinhuanet.com）
 
 
 class SmartCollectSimilarityPair(BaseModel):
-    left: SmartCollectSimilarityClue
-    right: SmartCollectSimilarityClue
-    similarity_score: float = Field(ge=-1, le=1)
+    """一对新闻线索的语义相似度结果。
+
+    - left/right：按“搜索排名升序”固定左小右大，避免同一对重复返回；
+    - similarity_score：[-1,1]，由归一化向量点积得到，越接近1表示语义越相似。
+    """
+    left: SmartCollectSimilarityClue  # 排名较小的一条线索
+    right: SmartCollectSimilarityClue  # 排名较大的一条线索
+    similarity_score: float = Field(ge=-1, le=1)  # 归一化向量余弦相似度
 
 
 class SmartCollectSimilarityResponse(BaseModel):
-    task_id: int
-    query: str
-    clue_count: int = Field(ge=0)
-    pair_count: int = Field(ge=0)
-    items: list[SmartCollectSimilarityPair]
+    """同一采编任务内新闻线索两两相似度分析的响应。"""
+    task_id: int  # 采编任务ID
+    query: str  # 本次采编任务的新闻主题
+    clue_count: int = Field(ge=0)  # 参与分析的线索数量
+    pair_count: int = Field(ge=0)  # 理论两两组合数 = n*(n-1)/2
+    items: list[SmartCollectSimilarityPair]  # 按相似度从高到低返回，最多 limit 条
 
 
 class SmartCollectEventClueItem(BaseModel):

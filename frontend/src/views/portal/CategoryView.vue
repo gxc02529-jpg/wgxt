@@ -142,9 +142,18 @@ function changePage(p) {
   load()
 }
 
-watch(() => route.params.slug, load)
+watch(() => route.params.slug, () => {
+  // 切换栏目时重置到第一页，避免把上一个栏目的页码带过来
+  page.value = 1
+  pendingScrollY.value = 0
+  load()
+})
 // 城市变化（导航条选择/清除）→ 当前栏目页同步刷新
-watch(() => cityStore.city, load)
+watch(() => cityStore.city, () => {
+  // 切换城市时也回到第一页，避免页码超出当前城市数据范围
+  page.value = 1
+  load()
+})
 onBeforeRouteLeave(saveListState)
 onMounted(() => {
   restoreListState()
