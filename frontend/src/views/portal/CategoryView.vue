@@ -43,8 +43,8 @@
 </template>
 
 <script setup>
-import { onMounted, ref, watch } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { nextTick, onMounted, ref, watch } from 'vue'
+import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { articleApi, categoryApi } from '../../api'
 import { useCityStore } from '../../stores/city'
@@ -66,6 +66,42 @@ const sortOptions = [
   { label: '最热', value: 'hot' },
 ]
 
+const LIST_STATE_PREFIX = 'wg_category_list_state:'
+const pendingScrollY = ref(0)
+
+function listStateKey() {
+  const slug = route.params.slug || 'all'
+  return `${LIST_STATE_PREFIX}${slug}`
+}
+
+function saveListState() {
+  try {
+    sessionStorage.setItem(listStateKey(), JSON.stringify({
+      page: page.value,
+      sort: sort.value,
+      city: cityStore.city || '',
+      scrollY: window.scrollY,
+    }))
+  } catch {
+    // 保存失败不影响正常浏览
+  }
+}
+
+function restoreListState() {
+  try {
+    const raw = sessionStorage.getItem(listStateKey())
+    if (!raw) return
+    const saved = JSON.parse(raw)
+    if (!saved || saved.city !== (cityStore.city || '')) return
+    const savedPage = Number(saved.page)
+    if (Number.isFinite(savedPage) && savedPage > 0) page.value = savedPage
+    sort.value = saved.sort === 'hot' ? 'hot' : 'latest'
+    pendingScrollY.value = Number(saved.scrollY) || 0
+  } catch {
+    sessionStorage.removeItem(listStateKey())
+  }
+}
+
 async function load() {
   loading.value = true
   try {
@@ -82,6 +118,12 @@ async function load() {
     const res = await articleApi.list(params)
     articles.value = res.items
     total.value = res.total
+    if (pendingScrollY.value) {
+      const y = pendingScrollY.value
+      pendingScrollY.value = 0
+      await nextTick()
+      window.scrollTo(0, y)
+    }
   } catch (e) {
     ElMessage.error(String(e))
   } finally {
@@ -103,7 +145,11 @@ function changePage(p) {
 watch(() => route.params.slug, load)
 // 城市变化（导航条选择/清除）→ 当前栏目页同步刷新
 watch(() => cityStore.city, load)
-onMounted(load)
+onBeforeRouteLeave(saveListState)
+onMounted(() => {
+  restoreListState()
+  load()
+})
 </script>
 
 <style scoped>
