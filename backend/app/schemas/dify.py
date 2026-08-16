@@ -14,7 +14,7 @@ class DifyWorkflowIn(BaseModel):
     description: str = Field(default="", max_length=500, description="用途说明")
     input_schema: dict = Field(default_factory=dict, description="输入参数说明（JSON）")
     enabled: bool = True
-    timeout: int = Field(default=30, ge=5, le=120, description="调用超时（秒）")
+    timeout: int = Field(default=30, ge=5, le=3600, description="调用超时（秒），最长 60 分钟")
 
 
 class DifyRunIn(BaseModel):

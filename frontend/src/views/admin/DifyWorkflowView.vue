@@ -72,7 +72,7 @@
           />
         </el-form-item>
         <el-form-item label="超时(秒)">
-          <el-input-number v-model="form.timeout" :min="5" :max="120" />
+          <el-input-number v-model="form.timeout" :min="5" :max="3600" :step="60" />
         </el-form-item>
         <el-form-item label="启用">
           <el-switch v-model="form.enabled" />
@@ -133,7 +133,7 @@ const emptyForm = () => ({
 const dialog = reactive({ visible: false, isEdit: false, id: null })
 const form = reactive(emptyForm())
 
-const runDialog = reactive({ visible: false, id: null, name: '', inputs: '{}', loading: false, result: '' })
+const runDialog = reactive({ visible: false, id: null, name: '', inputs: '{}', loading: false, result: '', timeout: 30 })
 
 async function loadList() {
   loading.value = true
@@ -237,6 +237,7 @@ function openRun(row) {
   runDialog.name = row.name
   runDialog.inputs = '{}'
   runDialog.result = ''
+  runDialog.timeout = row.timeout || 30
   runDialog.visible = true
 }
 
@@ -250,7 +251,7 @@ async function doRun() {
   }
   runDialog.loading = true
   try {
-    const res = await difyApi.run(runDialog.id, { inputs, user: 'admin' })
+    const res = await difyApi.run(runDialog.id, { inputs, user: 'admin' }, (runDialog.timeout || 30) * 1000)
     runDialog.result = JSON.stringify(res, null, 2)
   } catch (e) {
     runDialog.result = JSON.stringify({ error: String(e) }, null, 2)

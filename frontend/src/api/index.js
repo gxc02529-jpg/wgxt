@@ -197,7 +197,7 @@ export const difyApi = {
   create: (data) => client.post('/dify/workflows', data),
   update: (id, data) => client.put(`/dify/workflows/${id}`, data),
   remove: (id) => client.delete(`/dify/workflows/${id}`),
-  run: (id, data) => client.post(`/dify/workflows/${id}/run`, data),
+  run: (id, data, timeoutMs = 3600000) => client.post(`/dify/workflows/${id}/run`, data, { timeout: timeoutMs }),
 }
 
 // ---- AI 协作台（写稿页 AI 辅助功能：提交异步任务后轮询状态）----
