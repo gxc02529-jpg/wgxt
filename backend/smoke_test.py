@@ -527,7 +527,8 @@ def main():
             ("classify", {"title": ai_classify_title}, lambda d: d["category_name"] == "科学"),
             # 摘要已接入真实 Dify 工作流，断言返回非空摘要文本（占位/真实实现均成立）
             ("summary", {"title": ai_title, "content": ai_content}, lambda d: bool(str(d.get("summary", "")).strip())),
-            ("review", {"title": ai_title, "content": ai_content}, lambda d: set(d) >= {"色情内容", "用语文明"}),
+            # 多维度审核已接入真实 Dify 工作流 article_weidu，断言返回结构化结果
+            ("review", {"title": ai_title, "content": ai_content}, lambda d: "overall_risk" in d and isinstance(d.get("risk_list"), list)),
             # 内容校验已接入真实 Dify 工作流 article_neirong，断言返回 items 列表即可（条数取决于模型）
             ("check", {"content": ai_content}, lambda d: isinstance(d.get("items"), list)),
             ("score", {"content": ai_content}, lambda d: d["总分"] == "80/100"),

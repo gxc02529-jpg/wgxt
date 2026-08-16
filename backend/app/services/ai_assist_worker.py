@@ -125,6 +125,35 @@ def _extract_check_items(outputs) -> list:
     return [it for it in raw if isinstance(it, dict)]
 
 
+def _extract_review_result(outputs) -> dict:
+    """从 Dify outputs 中提取多维度审核结果
+
+    返回结构固定为 {"overall_risk": str, "risk_list": [...], "summary": str}；
+    risk_list 元素含 risk_dimension / risk_level / source_text / risk_desc / suggestion。
+    Dify 结束节点可能返回直接对象或 {"text": "<json 字符串>"} 包装，统一解析。
+    """
+    raw = outputs
+    if isinstance(raw, str):
+        raw = _try_json(raw) or raw
+    if isinstance(raw, dict):
+        for key in ("result", "outputs", "data", "text"):
+            if isinstance(raw.get(key), (str, dict)):
+                raw = raw[key]
+                break
+    if isinstance(raw, str):
+        raw = _try_json(raw) or {}
+    if not isinstance(raw, dict):
+        return {"overall_risk": "", "risk_list": [], "summary": ""}
+    risk_list = raw.get("risk_list") or []
+    if not isinstance(risk_list, list):
+        risk_list = []
+    return {
+        "overall_risk": str(raw.get("overall_risk") or "").strip(),
+        "risk_list": [it for it in risk_list if isinstance(it, dict)],
+        "summary": str(raw.get("summary") or "").strip(),
+    }
+
+
 def dispatch(feature_type: int, inputs: dict, context: dict | None = None) -> dict:
     """AI 功能执行入口（占位假实现）
 
@@ -165,12 +194,19 @@ def dispatch(feature_type: int, inputs: dict, context: dict | None = None) -> di
     if feature_type == FEATURE_REVIEW:
         if not title or not content:
             raise ValueError("请先填写文稿标题和正文")
-        return {
-            "色情内容": False,
-            "暴力内容": False,
-            "用语文明": True,
-            "涉政内容": True,
-        }
+
+        # 多维度审核：入参 original_text = 标题 + 正文（见 dify_workflows.input_schema）
+        db = SessionLocal()
+        try:
+            data = run_workflow(
+                db,
+                inputs={"original_text": f"{title}\n{content}"},
+                name="article_weidu",
+            )
+        finally:
+            db.close()
+        # 返回结构固定为 {overall_risk, risk_list, summary}，前端直接渲染
+        return _extract_review_result(data.get("outputs") or {})
 
     if feature_type == FEATURE_CHECK:
         if not content:

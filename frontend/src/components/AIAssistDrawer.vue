@@ -201,19 +201,32 @@
               调用
             </el-button>
           </div>
-          <div v-if="Object.keys(reviewItems).length" class="ai-tool__result ai-review">
-            <span
-              v-for="(passed, name) in reviewItems"
-              :key="name"
-              class="ai-review__chip"
-              :class="passed ? 'is-pass' : 'is-fail'"
+          <div v-if="hasReview" class="ai-tool__result ai-review">
+            <div class="ai-review__overall">
+              <span class="ai-review__badge" :class="riskClass(reviewItems.overall_risk)">
+                {{ reviewItems.overall_risk || '未评估' }}
+              </span>
+              <span class="ai-review__overall-label">总体风险</span>
+            </div>
+
+            <div v-for="(item, index) in reviewItems.risk_list" :key="index" class="ai-review__item">
+              <div class="ai-review__item-head">
+                <span class="ai-review__dim" :class="riskLevelClass(item.risk_level)">{{ item.risk_dimension }}</span>
+                <span class="ai-review__level">{{ item.risk_level }}</span>
+              </div>
+              <p v-if="item.source_text" class="ai-review__source"><b>原文证据：</b>{{ item.source_text }}</p>
+              <p v-if="item.risk_desc" class="ai-review__desc">{{ item.risk_desc }}</p>
+              <p v-if="item.suggestion" class="ai-review__suggestion"><b>处置建议：</b>{{ item.suggestion }}</p>
+            </div>
+
+            <p
+              v-if="Array.isArray(reviewItems.risk_list) && reviewItems.risk_list.length === 0"
+              class="ai-review__empty"
             >
-              <el-icon class="ai-review__chip-icon">
-                <CircleCheck v-if="passed" />
-                <CircleClose v-else />
-              </el-icon>
-              {{ name }}：{{ passed ? '通过' : '未通过' }}
-            </span>
+              未发现明显风险项
+            </p>
+
+            <p v-if="reviewItems.summary" class="ai-review__summary">{{ reviewItems.summary }}</p>
           </div>
         </article>
 
@@ -309,7 +322,7 @@
 import { computed, nextTick, reactive, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import {
-  CircleCheck, CircleClose, Collection, Document, EditPen, MagicStick, Trophy, Warning,
+  CircleCheck, Collection, Document, EditPen, MagicStick, Trophy, Warning,
 } from '@element-plus/icons-vue'
 import { aiAssistApi, aiCorrectionApi } from '../api'
 import RichTextEditor from './RichTextEditor.vue'
@@ -494,6 +507,30 @@ function scorePercent(point) {
   const match = String(point || '').match(/(\d+)\s*\/\s*(\d+)/)
   if (!match) return 0
   return Math.round((Number(match[1]) / Number(match[2])) * 100)
+}
+
+// 多维度审核结果：有总体风险或明细即展示
+const hasReview = computed(() => {
+  const r = reviewItems.value || {}
+  return Boolean(r.overall_risk) || (Array.isArray(r.risk_list) && r.risk_list.length > 0)
+})
+
+// 总体风险 → 徽章颜色：高风险红 / 中风险橙 / 低风险黄 / 安全绿
+function riskClass(overall) {
+  const s = String(overall || '')
+  if (s.includes('高')) return 'is-red'
+  if (s.includes('中')) return 'is-orange'
+  if (s.includes('低')) return 'is-yellow'
+  return 'is-green'
+}
+
+// 单项风险等级 → 颜色：🔴确定违规 / 🟠高风险疑似 / 🟡低风险疑似
+function riskLevelClass(level) {
+  const s = String(level || '')
+  if (s.includes('🔴') || s.includes('确定违规')) return 'is-red'
+  if (s.includes('🟠') || s.includes('高风险')) return 'is-orange'
+  if (s.includes('🟡') || s.includes('低风险')) return 'is-yellow'
+  return 'is-gray'
 }
 
 // 提交分类纠正：保存训练样本（标题+正文+模型分类+纠正分类），并把纠正栏目选中到当前文稿
@@ -956,33 +993,104 @@ watch(
   flex-shrink: 0;
 }
 
-/* 审核结果 chips */
+/* 多维度审核结果：总体风险徽章 + 风险明细卡片 + 总结 */
 .ai-review {
-  flex-wrap: wrap;
+  flex-direction: column;
+  align-items: stretch;
+  width: 100%;
 }
 
-.ai-review__chip {
+.ai-review__overall {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.ai-review__overall-label {
+  font-size: 12px;
+  color: var(--color-ink-3, #94a3b8);
+}
+
+.ai-review__badge {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  padding: 4px 10px;
+  padding: 4px 12px;
   border-radius: 999px;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.ai-review__badge.is-green { background: #dcfce7; color: #15803d; }
+.ai-review__badge.is-yellow { background: #fef9c3; color: #a16207; }
+.ai-review__badge.is-orange { background: #ffedd5; color: #c2410c; }
+.ai-review__badge.is-red { background: #fee2e2; color: #b91c1c; }
+
+.ai-review__item {
+  border: 1px solid var(--color-rule, #e2e8f0);
+  border-radius: 10px;
+  background: var(--color-paper, #fff);
+  padding: 10px 12px;
+  margin-bottom: 8px;
+}
+
+.ai-review__item-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 6px;
+}
+
+.ai-review__dim {
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.ai-review__dim.is-red { color: #b91c1c; }
+.ai-review__dim.is-orange { color: #c2410c; }
+.ai-review__dim.is-yellow { color: #a16207; }
+.ai-review__dim.is-gray { color: var(--color-ink-2, #64748b); }
+
+.ai-review__level {
   font-size: 12px;
+  font-weight: 600;
+  color: var(--color-ink-2, #64748b);
+}
+
+.ai-review__source,
+.ai-review__desc,
+.ai-review__suggestion {
+  margin: 4px 0;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--color-ink-2, #64748b);
+}
+
+.ai-review__source b,
+.ai-review__suggestion b {
+  color: var(--color-ink, #1e293b);
   font-weight: 600;
 }
 
-.ai-review__chip-icon {
-  font-size: 13px;
+.ai-review__desc {
+  color: var(--color-ink, #1e293b);
 }
 
-.ai-review__chip.is-pass {
-  background: #dcfce7;
+.ai-review__empty {
+  margin: 0 0 6px;
+  font-size: 12px;
   color: #15803d;
 }
 
-.ai-review__chip.is-fail {
-  background: #fee2e2;
-  color: #b91c1c;
+.ai-review__summary {
+  margin: 6px 0 0;
+  padding-top: 8px;
+  border-top: 1px dashed var(--color-rule, #e2e8f0);
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--color-ink-2, #64748b);
 }
 
 /* 校验错误列表 */
