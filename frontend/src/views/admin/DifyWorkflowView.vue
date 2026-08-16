@@ -58,7 +58,7 @@
           <el-input v-model="form.api_base" placeholder="https://api.dify.ai/v1 或自建地址" />
         </el-form-item>
         <el-form-item label="API Key" required>
-          <el-input v-model="form.api_key" placeholder="app-xxx" show-password />
+          <el-input v-model="form.api_key" placeholder="app-xxx；编辑时留空保留原 Key" show-password />
         </el-form-item>
         <el-form-item label="用途说明">
           <el-input v-model="form.description" placeholder="这个工作流用来做什么" />
@@ -160,7 +160,7 @@ function openEdit(row) {
   Object.assign(form, {
     name: row.name,
     api_base: row.api_base,
-    api_key: row.api_key,
+    api_key: '',
     description: row.description,
     input_schema_text:
       row.input_schema && typeof row.input_schema === 'object'
@@ -175,8 +175,12 @@ function openEdit(row) {
 }
 
 async function save() {
-  if (!form.name.trim() || !form.api_base.trim() || !form.api_key.trim()) {
-    ElMessage.warning('请填写业务标识、API 地址和 API Key')
+  if (!form.name.trim() || !form.api_base.trim()) {
+    ElMessage.warning('请填写业务标识和 API 地址')
+    return
+  }
+  if (!dialog.isEdit && !form.api_key.trim()) {
+    ElMessage.warning('请填写 API Key')
     return
   }
   let inputSchema = {}
@@ -186,10 +190,11 @@ async function save() {
     ElMessage.error('输入参数不是合法的 JSON')
     return
   }
+  const apiKey = form.api_key.trim()
   const payload = {
     name: form.name.trim(),
     api_base: form.api_base.trim(),
-    api_key: form.api_key.trim(),
+    ...(apiKey ? { api_key: apiKey } : {}),
     description: form.description,
     input_schema: inputSchema,
     enabled: form.enabled,

@@ -27,6 +27,8 @@ def create_workflow(
 ):
     if db.query(DifyWorkflow).filter(DifyWorkflow.name == body.name).first():
         raise HTTPException(400, "工作流标识已存在")
+    if not body.api_key or not body.api_key.strip():
+        raise HTTPException(422, "API Key 不能为空")
     row = DifyWorkflow(
         name=body.name,
         api_base=body.api_base,
@@ -57,7 +59,8 @@ def update_workflow(
         raise HTTPException(400, "工作流标识已存在")
     row.name = body.name
     row.api_base = body.api_base
-    row.api_key = body.api_key
+    if body.api_key and body.api_key.strip():
+        row.api_key = body.api_key.strip()
     row.description = body.description
     row.input_schema = body.input_schema
     row.enabled = body.enabled
