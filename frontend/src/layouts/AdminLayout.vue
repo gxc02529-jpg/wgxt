@@ -28,10 +28,7 @@
     <el-container>
       <el-header class="admin-header">
         <div class="admin-header__left">
-          <router-link to="/" class="back-link">
-            <el-icon><Back /></el-icon>
-            返回门户
-          </router-link>
+          <AdminBackLink to="/" label="返回门户" />
         </div>
         <el-dropdown trigger="click">
           <button class="admin-user">
@@ -59,9 +56,10 @@
 import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
-  Back, Document, FolderOpened, Odometer, Setting, User,
+  Document, FolderOpened, Odometer, Setting, User,
 } from '@element-plus/icons-vue'
 import { useAuthStore } from '../stores/auth'
+import AdminBackLink from '../components/AdminBackLink.vue'
 
 const route = useRoute()
 const router = useRouter()

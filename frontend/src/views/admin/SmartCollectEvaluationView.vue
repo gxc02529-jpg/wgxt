@@ -2,9 +2,7 @@
   <div class="evaluation-page">
     <div class="page-head">
       <div>
-        <el-button link type="primary" @click="router.push({ name: 'admin-smart-collect' })">
-          ← 返回智能采编
-        </el-button>
+        <AdminBackLink :to="{ name: 'admin-smart-collect' }" label="返回智能采编" />
         <h1 class="page-title">相关性评估</h1>
         <p class="page-description">对照人工判断，观察Tavily搜索分数和E5语义分数的表现。</p>
       </div>
@@ -106,6 +104,7 @@ import { computed, onMounted, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { useRouter } from 'vue-router'
 import { smartCollectApi } from '../../api'
+import AdminBackLink from '../../components/AdminBackLink.vue'
 
 const router = useRouter()
 const loading = ref(false)

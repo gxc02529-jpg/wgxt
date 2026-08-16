@@ -2,7 +2,7 @@
   <div class="task-detail-page">
     <div class="page-head">
       <div>
-        <el-button link type="primary" @click="router.push({ name: 'admin-smart-collect' })">← 返回任务列表</el-button>
+        <AdminBackLink :to="{ name: 'admin-smart-collect' }" label="返回任务列表" />
         <h1 class="page-title">采编任务 #{{ task?.id || route.params.id }}</h1>
       </div>
       <el-button :loading="loading" @click="loadTask">重新加载</el-button>
@@ -674,6 +674,7 @@ import { computed, onMounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useRoute, useRouter } from 'vue-router'
 import { smartCollectApi } from '../../api'
+import AdminBackLink from '../../components/AdminBackLink.vue'
 
 const route = useRoute()
 const router = useRouter()

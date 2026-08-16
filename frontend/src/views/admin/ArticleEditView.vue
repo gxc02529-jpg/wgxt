@@ -3,10 +3,7 @@
     <!-- 吸顶工具栏：返回 + 标题 + 保存/提交 -->
     <header class="edit-toolbar">
       <div class="edit-toolbar__left">
-        <el-button class="back-btn" text @click="router.push('/admin/articles')">
-          <el-icon><Back /></el-icon>
-          <span>返回列表</span>
-        </el-button>
+        <AdminBackLink to="/admin/articles" label="返回列表" />
         <h1 class="edit-title">{{ isEdit ? '编辑文稿' : '写新文稿' }}</h1>
       </div>
       <div class="edit-toolbar__actions">
@@ -313,12 +310,13 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Back, MagicStick } from '@element-plus/icons-vue'
+import { MagicStick } from '@element-plus/icons-vue'
 import { articleApi, categoryApi, channelApi, smartCollectApi } from '../../api'
 import { CITY_PRESET } from '../../stores/city'
 import AIAssistDrawer from '../../components/AIAssistDrawer.vue'
 import RichTextEditor from '../../components/RichTextEditor.vue'
 import ResourcePicker from '../../components/ResourcePicker.vue'
+import AdminBackLink from '../../components/AdminBackLink.vue'
 import { stripHtml } from '../../utils/text'
 
 const route = useRoute()
