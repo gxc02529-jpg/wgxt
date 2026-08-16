@@ -94,7 +94,7 @@
             </div>
           </div>
           <RichTextEditor
-            v-if="!previewMode"
+            v-if="!aiVisible && !previewMode"
             v-model="form.content"
             class="content-editor"
             @text-change="onContentChange"
