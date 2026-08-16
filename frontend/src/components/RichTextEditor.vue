@@ -20,7 +20,7 @@
 <script setup>
 // wangEditor 5（MIT 开源）Vue3 封装：正文 HTML 双向绑定 + 纯文本回调
 // 用法：<RichTextEditor v-model="form.content" @text-change="(t) => (form.content_source = t)" />
-import { onBeforeUnmount, ref, shallowRef, watch } from 'vue'
+import { nextTick, onBeforeUnmount, ref, shallowRef, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Editor, Toolbar } from '@wangeditor/editor-for-vue'
 import '@wangeditor/editor/dist/css/style.css'
@@ -75,7 +75,9 @@ function handleChange(editor) {
 // 外部（如 AI 协作台另一个编辑器实例）更新 content 时，同步到本实例
 watch(
   () => props.modelValue,
-  (val) => {
+  async (val) => {
+    // 先等 wangEditor 自身 v-model 同步完成，避免每次输入时 setHtml 重置光标
+    await nextTick()
     if (editorRef.value && val !== editorRef.value.getHtml()) {
       editorRef.value.setHtml(val || '<p><br></p>')
     }
