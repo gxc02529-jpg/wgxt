@@ -1631,3 +1631,872 @@ body.theme-comic .el-dropdown__popper .el-popper__arrow::before {
   font-size: 1.15rem;
   letter-spacing: 0.03em;
 }
+/* ============================================================
+ * 关键词面板（KeywordPanel）主题适配
+ *
+ * 组件类名映射（v3 三段式卡片）：
+ *   .kw-panel          面板容器
+ *   .kw-panel__bar     引语栏
+ *   .kw-main-row       主关键词卡片集群
+ *   .kw-main-tag       主关键词卡片容器（--on 展开态）
+ *   .kw-main-tag__hash   第一段：# 跳正文
+ *   .kw-main-tag__hash-ring  # 圆圈
+ *   .kw-main-tag__text   第二段：关键词 → AI 解释
+ *   .kw-main-tag__caret  第三段：▾ 知识链
+ *   .kw-chains         知识链丝带
+ *   .kw-tag            分支标签
+ *   .explain-popup     弹窗（teleported to body）
+ * ============================================================ */
+
+/* ═══════════════════════════════════════════════════════════════
+   赛博霓虹：关键词面板
+   设计方向：暗色玻璃卡片 + 霓虹辉光 + 终端字体
+   ═══════════════════════════════════════════════════════════════ */
+
+/* 关键词面板：提升到 CRT 扫描线（z-index:9990）上方，避免文字被遮挡 */
+.portal-shell.theme-cyber .kw-panel {
+  position: relative;
+  z-index: 9991;
+}
+
+/* 引语栏 */
+.portal-shell.theme-cyber .kw-panel__label {
+  color: #5c6f84;
+  font-family: 'Orbitron', 'PingFang SC', sans-serif;
+  letter-spacing: .12em;
+}
+
+.portal-shell.theme-cyber .kw-panel__dot {
+  color: #3a4d66;
+}
+
+.portal-shell.theme-cyber .kw-panel__count {
+  background: rgba(0,229,255,.1);
+  color: #7f93ad;
+}
+
+/* 主关键词卡片：暗色玻璃 + 霓虹配色 */
+.portal-shell.theme-cyber .kw-main-tag {
+  --_bg: rgba(13,19,34,.8);
+  --_accent: #00e5ff;
+  --_accent-soft: rgba(0,229,255,.18);
+  --_text: #9fb3c8;
+  --_divider: rgba(0,229,255,.12);
+
+  background: var(--_bg);
+  border: 1px solid rgba(0,229,255,.15);
+  box-shadow: 0 0 0 0 rgba(0,229,255,0);
+  font-family: 'Rajdhani', 'PingFang SC', sans-serif;
+}
+
+/* 覆盖经典编辑的 nth-child 色彩，赛博统一用霓虹调 */
+.portal-shell.theme-cyber .kw-main-tag:nth-child(8n+1),
+.portal-shell.theme-cyber .kw-main-tag:nth-child(8n+2),
+.portal-shell.theme-cyber .kw-main-tag:nth-child(8n+3),
+.portal-shell.theme-cyber .kw-main-tag:nth-child(8n+4),
+.portal-shell.theme-cyber .kw-main-tag:nth-child(8n+5),
+.portal-shell.theme-cyber .kw-main-tag:nth-child(8n+6),
+.portal-shell.theme-cyber .kw-main-tag:nth-child(8n+7),
+.portal-shell.theme-cyber .kw-main-tag:nth-child(8n+8) {
+  --_bg: rgba(13,19,34,.8);
+  --_accent: #00e5ff;
+  --_accent-soft: rgba(0,229,255,.18);
+}
+
+/* 顶部装饰条：赛博版半透明霓虹 */
+.portal-shell.theme-cyber .kw-main-tag::before {
+  opacity: .4;
+}
+
+.portal-shell.theme-cyber .kw-main-tag:hover::before {
+  opacity: .75;
+}
+
+.portal-shell.theme-cyber .kw-main-tag--on::before {
+  opacity: .9 !important;
+}
+
+.portal-shell.theme-cyber .kw-main-tag:hover {
+  background: rgba(0,229,255,.08);
+  border-color: rgba(0,229,255,.35);
+  box-shadow: 0 0 20px rgba(0,229,255,.15), 0 0 0 1px rgba(0,229,255,.2);
+}
+
+/* 第一段：# 跳转 */
+.portal-shell.theme-cyber .kw-main-tag__hash {
+  border-right-color: rgba(0,229,255,.12);
+}
+
+.portal-shell.theme-cyber .kw-main-tag__hash-ring {
+  background: rgba(0,229,255,.12);
+  color: #00e5ff;
+  box-shadow: 0 0 0 1px rgba(0,229,255,.25);
+  font-family: Consolas, monospace;
+}
+
+.portal-shell.theme-cyber .kw-main-tag__hash:hover .kw-main-tag__hash-ring {
+  background: #00e5ff;
+  color: #0a0e1a;
+  box-shadow: 0 0 0 5px rgba(0,229,255,.3), 0 0 14px rgba(0,229,255,.5);
+}
+
+/* 第二段：关键词文字 */
+.portal-shell.theme-cyber .kw-main-tag__text {
+  color: #9fb3c8;
+  font-family: 'Rajdhani', 'PingFang SC', sans-serif;
+  letter-spacing: .04em;
+}
+
+.portal-shell.theme-cyber .kw-main-tag__text::after {
+  background: #00e5ff;
+  opacity: .4;
+}
+
+.portal-shell.theme-cyber .kw-main-tag__text:hover {
+  color: #00e5ff;
+  text-shadow: 0 0 10px rgba(0,229,255,.4);
+}
+
+/* 第三段：下拉箭头 */
+.portal-shell.theme-cyber .kw-main-tag__caret {
+  border-left-color: rgba(0,229,255,.12);
+  color: #5c6f84;
+}
+
+.portal-shell.theme-cyber .kw-main-tag__caret:hover {
+  color: #00e5ff;
+  background: rgba(0,229,255,.08);
+}
+
+/* 展开态 */
+.portal-shell.theme-cyber .kw-main-tag--on {
+  background: rgba(0,229,255,.1) !important;
+  border-color: #00e5ff !important;
+  box-shadow: 0 0 0 2px #00e5ff, 0 0 28px rgba(0,229,255,.35) !important;
+}
+
+.portal-shell.theme-cyber .kw-main-tag--on .kw-main-tag__hash-ring {
+  background: #00e5ff;
+  color: #0a0e1a;
+  box-shadow: 0 0 0 5px rgba(0,229,255,.3), 0 0 16px rgba(0,229,255,.5);
+}
+
+.portal-shell.theme-cyber .kw-main-tag--on .kw-main-tag__text {
+  color: #00e5ff;
+  text-shadow: 0 0 14px rgba(0,229,255,.5);
+}
+
+.portal-shell.theme-cyber .kw-main-tag--on .kw-main-tag__caret {
+  color: #00e5ff;
+}
+
+/* 链区丝带 */
+.portal-shell.theme-cyber .kw-chains {
+  background:
+    linear-gradient(135deg, rgba(10,14,26,.85) 0%, rgba(13,19,34,.85) 100%),
+    radial-gradient(circle at 20% 80%, rgba(0,229,255,.03) 0%, transparent 40%),
+    radial-gradient(circle at 80% 20%, rgba(0,229,255,.03) 0%, transparent 40%);
+  border: 1px solid rgba(0,229,255,.15);
+  border-radius: 14px;
+  box-shadow: 0 2px 16px rgba(0,0,0,.3), inset 0 1px 0 rgba(0,229,255,.06);
+}
+
+/* 头部 */
+.portal-shell.theme-cyber .kw-chains__head {
+  border-bottom-color: rgba(0,229,255,.12);
+}
+
+.portal-shell.theme-cyber .kw-chains__head-icon {
+  color: #00e5ff;
+  opacity: .5;
+}
+
+.portal-shell.theme-cyber .kw-chains__head-title {
+  color: #9fb3c8;
+  font-family: 'Orbitron', 'PingFang SC', sans-serif;
+  letter-spacing: .08em;
+  font-size: 12px;
+}
+
+.portal-shell.theme-cyber .kw-chains__head-steps {
+  background: rgba(0,229,255,.1);
+  color: #00e5ff;
+  font-family: 'Rajdhani', sans-serif;
+  letter-spacing: .04em;
+}
+
+.portal-shell.theme-cyber .kw-chains__head-cat {
+  background: rgba(0,229,255,.12);
+  color: #00e5ff;
+  font-family: 'Rajdhani', 'PingFang SC', sans-serif;
+  letter-spacing: .06em;
+}
+
+/* 底部提示 */
+.portal-shell.theme-cyber .kw-chains__hint {
+  color: #5c6f84;
+  font-family: 'Rajdhani', 'PingFang SC', sans-serif;
+  letter-spacing: .03em;
+}
+
+/* 底部进度条：霓虹流光 */
+.portal-shell.theme-cyber .kw-chains__progress {
+  background: rgba(0,229,255,.08);
+  height: 3px;
+  overflow: hidden;
+}
+
+.portal-shell.theme-cyber .kw-chains__progress::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  height: auto;
+  background: linear-gradient(90deg, transparent 0%, #00e5ff 50%, transparent 100%);
+  animation: cyber-progress-shift 3s ease-in-out infinite;
+  transform: translateX(-40%);
+  width: 60%;
+  mask-image: none;
+  -webkit-mask-image: none;
+}
+
+@keyframes cyber-progress-shift {
+  0%, 100% { transform: translateX(-40%); }
+  50% { transform: translateX(80%); }
+}
+
+/* 左侧书脊 */
+.portal-shell.theme-cyber .kw-chains::after {
+  background: #00e5ff;
+  opacity: .25;
+  box-shadow: 0 0 8px rgba(0,229,255,.3);
+}
+
+.portal-shell.theme-cyber .kw-chains:hover::after {
+  opacity: .45;
+}
+
+.portal-shell.theme-cyber .kw-chains::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 16px;
+  right: 16px;
+  width: auto;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, rgba(0,229,255,.4) 20%, transparent 50%, rgba(0,229,255,.4) 80%, transparent);
+  opacity: .5;
+  border-radius: 1px;
+  z-index: 1;
+}
+
+/* 链行 hover */
+.portal-shell.theme-cyber .kw-chain:hover {
+  background: rgba(0,229,255,.04);
+  border-left-color: #00e5ff;
+}
+
+/* 分支标签 */
+.portal-shell.theme-cyber .kw-tag {
+  background: rgba(13,19,34,.7);
+  border-color: rgba(0,229,255,.15);
+  color: #7f93ad;
+  font-family: 'Rajdhani', 'PingFang SC', sans-serif;
+  letter-spacing: .03em;
+}
+
+/* 深度渐变 */
+.portal-shell.theme-cyber .kw-tag--deep {
+  background: rgba(10,14,26,.5);
+  color: #5c6f84;
+  border-color: rgba(0,229,255,.08);
+  font-size: 11.5px;
+}
+
+.portal-shell.theme-cyber .kw-tag--shallow {
+  border-color: rgba(0,229,255,.25);
+  color: #9fb3c8;
+  font-weight: 600;
+  box-shadow: 0 0 8px rgba(0,229,255,.05);
+}
+
+.portal-shell.theme-cyber .kw-tag--deep .kw-tag__dot {
+  background: rgba(0,229,255,.08);
+  color: #5c6f84;
+}
+
+.portal-shell.theme-cyber .kw-tag--shallow .kw-tag__dot {
+  background: rgba(0,229,255,.15);
+  color: #00e5ff;
+}
+
+.portal-shell.theme-cyber .kw-tag:hover {
+  color: #e6f7ff;
+  border-color: rgba(0,229,255,.35);
+  background: rgba(0,229,255,.08);
+  box-shadow: 0 0 16px rgba(0,229,255,.12);
+}
+
+.portal-shell.theme-cyber .kw-tag__dot {
+  background: rgba(0,229,255,.15);
+  color: #00e5ff;
+  font-family: Consolas, monospace;
+}
+
+.portal-shell.theme-cyber .kw-tag:hover .kw-tag__dot {
+  background: #00e5ff;
+  color: #0a0e1a;
+}
+
+.portal-shell.theme-cyber .kw-tag--end {
+  background: #00e5ff;
+  color: #0a0e1a;
+  font-weight: 700;
+  border-color: transparent;
+}
+
+.portal-shell.theme-cyber .kw-tag--end:hover {
+  background: #00f8ff;
+  box-shadow: 0 0 22px rgba(0,229,255,.5);
+}
+
+.portal-shell.theme-cyber .kw-tag--end .kw-tag__dot {
+  background: rgba(10,14,26,.3);
+  color: #0a0e1a;
+}
+
+.portal-shell.theme-cyber .kw-tag--live {
+  border-color: #00e5ff !important;
+  box-shadow: 0 0 0 3px rgba(0,229,255,.35), 0 0 18px rgba(0,229,255,.3) !important;
+  color: #e6f7ff !important;
+  background: rgba(0,229,255,.1) !important;
+}
+
+.portal-shell.theme-cyber .kw-tag--end.kw-tag--live {
+  box-shadow: 0 0 0 4px rgba(0,229,255,.5), 0 0 28px rgba(0,229,255,.5) !important;
+}
+
+/* 连接箭头 */
+.portal-shell.theme-cyber .kw-tag__link {
+  color: rgba(0,229,255,.2);
+}
+
+.portal-shell.theme-cyber .kw-chain:hover .kw-tag__link {
+  color: #00e5ff;
+  opacity: .5;
+}
+
+/* 赛博霓虹：弹窗（teleported to body） */
+body.theme-cyber .explain-popup {
+  background: #0d1322;
+  border: 1px solid rgba(0, 229, 255, 0.3);
+  box-shadow: 0 0 0 1px rgba(0, 229, 255, 0.2), 0 0 40px rgba(0, 229, 255, 0.15);
+}
+
+body.theme-cyber .explain-popup__header {
+  background: rgba(0, 229, 255, 0.06);
+  border-bottom-color: rgba(0, 229, 255, 0.2);
+}
+
+body.theme-cyber .explain-popup__tag {
+  color: #00e5ff;
+  font-family: 'Rajdhani', 'PingFang SC', sans-serif;
+  letter-spacing: 0.05em;
+}
+
+body.theme-cyber .explain-popup__icon {
+  color: #00e5ff;
+}
+
+body.theme-cyber .explain-popup__close:hover {
+  background: rgba(0, 229, 255, 0.12);
+  color: #00e5ff;
+}
+
+body.theme-cyber .explain-popup__body {
+  color: #e6f7ff;
+}
+
+body.theme-cyber .explain-popup__text :deep(strong) {
+  color: #00e5ff;
+}
+
+body.theme-cyber .explain-popup__footer {
+  background: linear-gradient(90deg, #00e5ff, #7c4dff, #ff2d78);
+}
+
+body.theme-cyber .loading-dot {
+  background: #00e5ff;
+}
+
+body.theme-cyber .loading-hint {
+  color: #64748b;
+}
+
+body.theme-cyber .skeleton-line {
+  background: linear-gradient(90deg, rgba(0, 229, 255, 0.12) 25%, rgba(0, 229, 255, 0.25) 50%, rgba(0, 229, 255, 0.12) 75%);
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   漫画波点：关键词面板
+   设计方向：粗黑描边卡片 + 硬投影 + 弹跳交互 + 彩色错落
+   ═══════════════════════════════════════════════════════════════ */
+
+/* 引语栏 */
+.portal-shell.theme-comic .kw-panel__label {
+  font-family: 'Bangers', 'PingFang SC', cursive;
+  font-size: 14px;
+  letter-spacing: .05em;
+  color: var(--color-ink);
+  text-transform: none;
+}
+
+.portal-shell.theme-comic .kw-panel__dot {
+  color: var(--color-ink);
+}
+
+.portal-shell.theme-comic .kw-panel__count {
+  color: var(--color-accent);
+  font-family: 'Bangers', cursive;
+  font-size: 12px;
+  background: #fff;
+  border: 2px solid var(--color-ink);
+  box-shadow: 2px 2px 0 rgba(26,26,46,.5);
+}
+
+/* 主关键词卡片：粗黑边 + 硬投影 + 弹跳 */
+.portal-shell.theme-comic .kw-main-tag {
+  --_bg: #fff;
+  --_accent: var(--color-accent);
+  --_accent-soft: var(--color-secondary);
+  --_text: var(--color-ink);
+
+  background: var(--_bg);
+  border: 3px solid var(--color-ink);
+  border-radius: 10px;
+  box-shadow: 4px 4px 0 rgba(26,26,46,.7);
+  font-family: 'Bangers', 'PingFang SC', cursive;
+  transition: transform .2s cubic-bezier(.34,1.56,.64,1), box-shadow .2s ease;
+}
+
+/* 覆盖经典编辑的 nth-child 色彩，漫画用彩色错落 */
+.portal-shell.theme-comic .kw-main-tag:nth-child(8n+1) { --_bg: #fff4c2; }
+.portal-shell.theme-comic .kw-main-tag:nth-child(8n+2) { --_bg: #d9f0ff; }
+.portal-shell.theme-comic .kw-main-tag:nth-child(8n+3) { --_bg: #ffd9d9; }
+.portal-shell.theme-comic .kw-main-tag:nth-child(8n+4) { --_bg: #e0ffe0; }
+.portal-shell.theme-comic .kw-main-tag:nth-child(8n+5) { --_bg: #f0e0ff; }
+.portal-shell.theme-comic .kw-main-tag:nth-child(8n+6) { --_bg: #ffe8d0; }
+.portal-shell.theme-comic .kw-main-tag:nth-child(8n+7) { --_bg: #d0fff0; }
+.portal-shell.theme-comic .kw-main-tag:nth-child(8n+8) { --_bg: #ffe0f0; }
+
+/* 顶部装饰条：漫画版粗黑描边 */
+.portal-shell.theme-comic .kw-main-tag::before {
+  height: 4px;
+  background: var(--color-ink);
+  opacity: .7;
+  border-radius: 0 0 2px 2px;
+  box-shadow: 0 2px 0 rgba(26,26,46,.4);
+}
+
+.portal-shell.theme-comic .kw-main-tag:hover::before {
+  opacity: 1;
+  height: 5px;
+  background: var(--color-accent);
+}
+
+.portal-shell.theme-comic .kw-main-tag--on::before {
+  opacity: 1 !important;
+  height: 5px !important;
+  background: #fff !important;
+}
+
+.portal-shell.theme-comic .kw-main-tag:hover {
+  background: #fff;
+  transform: translate(-2px,-3px) rotate(-1deg);
+  box-shadow: 6px 6px 0 rgba(26,26,46,.7), 0 0 0 3px var(--color-secondary);
+}
+
+.portal-shell.theme-comic .kw-main-tag:active {
+  transform: translate(0,0) rotate(0);
+  box-shadow: 2px 2px 0 rgba(26,26,46,.5);
+  transition: transform .06s;
+}
+
+.portal-shell.theme-comic .kw-main-tag__hash {
+  border-right: 2px solid var(--color-ink);
+}
+
+.portal-shell.theme-comic .kw-main-tag__hash-ring {
+  background: #fff;
+  color: var(--color-ink);
+  border: 2px solid var(--color-ink);
+  box-shadow: 2px 2px 0 rgba(26,26,46,.4);
+  font-family: 'Bangers', cursive;
+  font-size: 13px;
+  border-radius: 6px;
+}
+
+.portal-shell.theme-comic .kw-main-tag__hash:hover .kw-main-tag__hash-ring {
+  background: var(--color-accent);
+  color: #fff;
+  border-color: var(--color-ink);
+  box-shadow: 3px 3px 0 rgba(26,26,46,.5), 0 0 0 4px var(--color-secondary);
+  transform: scale(1.15) rotate(10deg);
+}
+
+.portal-shell.theme-comic .kw-main-tag__text {
+  font-family: 'Bangers', 'PingFang SC', cursive;
+  font-size: 14px;
+  color: var(--color-ink);
+  letter-spacing: .04em;
+}
+
+.portal-shell.theme-comic .kw-main-tag__text::after {
+  height: 3px;
+  background: var(--color-accent);
+  opacity: .6;
+}
+
+.portal-shell.theme-comic .kw-main-tag__text:hover {
+  color: var(--color-accent);
+  transform: rotate(-1deg);
+}
+
+.portal-shell.theme-comic .kw-main-tag__caret {
+  border-left: 2px solid var(--color-ink);
+  color: var(--color-ink);
+}
+
+.portal-shell.theme-comic .kw-main-tag__caret:hover {
+  color: var(--color-accent);
+  background: rgba(255,255,255,.5);
+}
+
+.portal-shell.theme-comic .kw-main-tag__caret:hover .kw-main-tag__caret-svg {
+  opacity: 1;
+}
+
+/* 展开态 */
+.portal-shell.theme-comic .kw-main-tag--on {
+  background: var(--color-accent) !important;
+  border-color: var(--color-ink) !important;
+  box-shadow: 5px 5px 0 rgba(26,26,46,.7), 0 0 0 5px var(--color-secondary) !important;
+  animation: comic-card-pop .4s cubic-bezier(.34,1.56,.64,1);
+}
+
+@keyframes comic-card-pop {
+  0% { box-shadow: 3px 3px 0 rgba(26,26,46,.7), 0 0 0 0 var(--color-secondary); }
+  60% { box-shadow: 5px 5px 0 rgba(26,26,46,.7), 0 0 0 12px var(--color-secondary); }
+  100% { box-shadow: 5px 5px 0 rgba(26,26,46,.7), 0 0 0 5px var(--color-secondary); }
+}
+
+.portal-shell.theme-comic .kw-main-tag--on .kw-main-tag__hash-ring {
+  background: #fff;
+  color: var(--color-ink);
+  border-color: var(--color-ink);
+  box-shadow: 3px 3px 0 rgba(26,26,46,.5);
+  transform: rotate(0);
+}
+
+.portal-shell.theme-comic .kw-main-tag--on .kw-main-tag__text {
+  color: #fff;
+  text-shadow: 2px 2px 0 rgba(26,26,46,.5);
+  transform: rotate(0);
+}
+
+.portal-shell.theme-comic .kw-main-tag--on .kw-main-tag__caret {
+  color: #fff;
+  border-left-color: var(--color-ink);
+}
+
+/* 链区丝带 */
+.portal-shell.theme-comic .kw-chains {
+  background: #fff;
+  border: 3px solid var(--color-ink);
+  border-radius: 8px;
+  box-shadow: 4px 4px 0 rgba(26,26,46,.7);
+}
+
+/* 头部 */
+.portal-shell.theme-comic .kw-chains__head {
+  border-bottom: 2px dashed var(--color-ink);
+}
+
+.portal-shell.theme-comic .kw-chains__head-icon {
+  color: var(--color-accent);
+  opacity: 1;
+}
+
+.portal-shell.theme-comic .kw-chains__head-title {
+  font-family: 'Bangers', 'PingFang SC', cursive;
+  font-size: 15px;
+  color: var(--color-ink);
+  letter-spacing: .04em;
+}
+
+.portal-shell.theme-comic .kw-chains__head-steps {
+  background: var(--color-secondary);
+  color: var(--color-ink);
+  font-family: 'Bangers', cursive;
+  font-size: 11px;
+  border: 2px solid var(--color-ink);
+  box-shadow: 1px 1px 0 rgba(26,26,46,.4);
+}
+
+.portal-shell.theme-comic .kw-chains__head-cat {
+  background: var(--color-accent);
+  color: #fff;
+  font-family: 'Bangers', cursive;
+  font-size: 11px;
+  border: 2px solid var(--color-ink);
+  box-shadow: 2px 2px 0 rgba(26,26,46,.5);
+}
+
+/* 底部提示 */
+.portal-shell.theme-comic .kw-chains__hint {
+  color: var(--color-ink);
+  opacity: .4;
+  font-family: 'Bangers', 'PingFang SC', cursive;
+  letter-spacing: .03em;
+  font-size: 11px;
+}
+
+/* 底部进度条 */
+.portal-shell.theme-comic .kw-chains__progress {
+  background: var(--color-ink);
+  height: 4px;
+  opacity: .15;
+  overflow: hidden;
+}
+
+.portal-shell.theme-comic .kw-chains__progress::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  height: auto;
+  background: repeating-linear-gradient(90deg, var(--color-primary) 0 8px, var(--color-secondary) 8px 16px, var(--color-accent) 16px 24px);
+  animation: none;
+  transform: none;
+  width: 100%;
+  mask-image: none;
+  -webkit-mask-image: none;
+}
+
+/* 左侧书脊 */
+.portal-shell.theme-comic .kw-chains::after {
+  content: '';
+  position: absolute;
+  left: 0; top: 0; bottom: 0;
+  width: 4px;
+  background: var(--color-ink);
+  opacity: 1;
+  border-radius: 0 4px 4px 0;
+}
+
+.portal-shell.theme-comic .kw-chains::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  width: auto;
+  height: 4px;
+  background: repeating-linear-gradient(90deg, var(--color-primary) 0 6px, var(--color-secondary) 6px 12px, var(--color-accent) 12px 18px);
+  opacity: 1;
+  border-radius: 0;
+  z-index: 1;
+}
+
+/* 链行 hover */
+.portal-shell.theme-comic .kw-chain:hover {
+  background: rgba(255,244,194,.5);
+  border-left-color: var(--color-accent);
+}
+
+/* 分支标签 */
+.portal-shell.theme-comic .kw-tag {
+  border: 2px solid var(--color-ink);
+  border-radius: 6px;
+  background: #fff;
+  font-weight: 700;
+  color: var(--color-ink);
+  box-shadow: 2px 2px 0 rgba(26,26,46,.6);
+  transition: transform .2s cubic-bezier(.34,1.56,.64,1), box-shadow .2s ease;
+  font-size: 13px;
+  padding: 5px 12px;
+}
+
+/* 深度渐变 */
+.portal-shell.theme-comic .kw-tag--deep {
+  background: #f8f8f8;
+  color: #888;
+  font-size: 11.5px;
+  padding: 4px 10px;
+  box-shadow: 1px 1px 0 rgba(26,26,46,.4);
+}
+
+.portal-shell.theme-comic .kw-tag--shallow {
+  font-size: 14px;
+  box-shadow: 3px 3px 0 rgba(26,26,46,.7);
+}
+
+.portal-shell.theme-comic .kw-tag--deep .kw-tag__dot {
+  border-width: 1.5px;
+  font-size: 9px;
+  background: #eee;
+  box-shadow: 0.5px 0.5px 0 rgba(26,26,46,.3);
+}
+
+.portal-shell.theme-comic .kw-tag--shallow .kw-tag__dot {
+  background: var(--color-accent);
+  color: #fff;
+  border-color: var(--color-ink);
+  box-shadow: 2px 2px 0 rgba(26,26,46,.5);
+}
+
+.portal-shell.theme-comic .kw-tag:hover {
+  transform: translate(-2px,-3px) rotate(-1deg);
+  box-shadow: 4px 4px 0 rgba(26,26,46,.7);
+  background: #fff4c2;
+  border-color: var(--color-ink);
+  color: var(--color-ink);
+}
+
+.portal-shell.theme-comic .kw-tag:active {
+  transform: translate(0,0) rotate(0);
+  box-shadow: 1px 1px 0 rgba(26,26,46,.5);
+  transition: transform .06s;
+}
+
+.portal-shell.theme-comic .kw-tag__dot {
+  border: 2px solid var(--color-ink);
+  font-family: 'Bangers', cursive;
+  font-size: 11px;
+  background: var(--color-secondary);
+  color: var(--color-ink);
+  box-shadow: 1px 1px 0 rgba(26,26,46,.4);
+}
+
+.portal-shell.theme-comic .kw-tag:hover .kw-tag__dot {
+  background: var(--color-accent);
+  color: #fff;
+  transform: scale(1.15) rotate(-5deg);
+}
+
+.portal-shell.theme-comic .kw-tag--end {
+  background: var(--color-accent);
+  color: #fff;
+  font-family: 'Bangers', 'PingFang SC', cursive;
+  font-size: 14px;
+  letter-spacing: .04em;
+  box-shadow: 3px 3px 0 rgba(26,26,46,.7);
+  border-color: var(--color-ink);
+}
+
+.portal-shell.theme-comic .kw-tag--end:hover {
+  background: var(--color-accent);
+  color: #fff;
+  transform: translate(-3px,-4px) rotate(0);
+  box-shadow: 5px 5px 0 rgba(26,26,46,.7);
+}
+
+.portal-shell.theme-comic .kw-tag--end .kw-tag__dot {
+  background: rgba(255,255,255,.3);
+  color: #fff;
+  border-color: #fff;
+}
+
+.portal-shell.theme-comic .kw-tag--live {
+  border-color: var(--color-accent) !important;
+  box-shadow: 0 0 0 3px #fff, 0 0 0 5px var(--color-ink) !important;
+  background: #fff !important;
+  color: var(--color-ink) !important;
+}
+
+.portal-shell.theme-comic .kw-tag--end.kw-tag--live {
+  box-shadow: 0 0 0 3px #fff, 0 0 0 6px var(--color-accent) !important;
+}
+
+/* 连接箭头 */
+.portal-shell.theme-comic .kw-tag__link {
+  color: var(--color-ink);
+  opacity: .35;
+  width: 20px;
+}
+
+.portal-shell.theme-comic .kw-chain:hover .kw-tag__link {
+  opacity: .7;
+  transform: translateX(3px);
+}
+
+/* 漫画波点：弹窗（teleported to body） */
+body.theme-comic .explain-popup {
+  background: #fffdf5;
+  border: 3px solid var(--color-ink);
+  border-radius: 10px;
+  box-shadow: 8px 8px 0 rgba(26, 26, 46, 0.85);
+}
+
+body.theme-comic .explain-popup__header {
+  background: #ffd23f;
+  border-bottom: 3px solid var(--color-ink);
+}
+
+body.theme-comic .explain-popup__header-inner {
+  font-family: 'Bangers', 'PingFang SC', cursive;
+}
+
+body.theme-comic .explain-popup__tag {
+  font-size: 17px;
+  letter-spacing: 0.05em;
+  color: var(--color-ink);
+}
+
+body.theme-comic .explain-popup__icon {
+  color: var(--color-ink);
+}
+
+body.theme-comic .explain-popup__close {
+  border: 2px solid var(--color-ink);
+  border-radius: 6px;
+  background: #fff;
+  box-shadow: 2px 2px 0 rgba(26, 26, 46, 0.7);
+  transition: transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+body.theme-comic .explain-popup__close:hover {
+  transform: scale(1.15);
+  box-shadow: 3px 3px 0 rgba(26, 26, 46, 0.7);
+  background: var(--color-accent);
+  color: #fff;
+}
+
+body.theme-comic .explain-popup__body {
+  color: var(--color-ink);
+}
+
+body.theme-comic .explain-popup__text :deep(strong) {
+  color: var(--color-accent);
+}
+
+body.theme-comic .explain-popup__footer {
+  height: 5px;
+  background: repeating-linear-gradient(
+    90deg,
+    var(--color-primary) 0 8px,
+    var(--color-secondary) 8px 16px,
+    var(--color-accent) 16px 24px
+  );
+}
+
+body.theme-comic .loading-dot {
+  background: var(--color-accent);
+}
+
+body.theme-comic .loading-hint {
+  color: var(--color-ink-3);
+  font-weight: 700;
+}
+
+body.theme-comic .skeleton-line {
+  background: linear-gradient(90deg, var(--color-rule) 25%, var(--color-secondary) 50%, var(--color-rule) 75%);
+}

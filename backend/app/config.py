@@ -47,6 +47,12 @@ class Settings(BaseSettings):
     TAVILY_API_KEY: str = ""
     TAVILY_TIMEOUT: int = 15
 
+    # AI 大模型 API（OpenAI 兼容接口，如 DeepSeek / Groq / 硅基流动等）
+    AI_API_BASE: str = "https://api.openai.com/v1"
+    AI_API_KEY: str = "sk-your-api-key-here"
+    AI_MODEL: str = "gpt-4o"
+    AI_TIMEOUT: int = 60
+
     # 本地Embedding：默认加载相对项目根目录的 backend/app/multilingual-e5-small，可用 .env 覆盖
     EMBEDDING_MODEL_NAME: str = LOCAL_EMBEDDING_MODEL_PATH
     EMBEDDING_DEVICE: str = "auto"

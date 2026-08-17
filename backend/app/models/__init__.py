@@ -18,6 +18,8 @@ from .view_history import ViewHistory
 from .ai_call import AICallLog
 from .ai_task import AITask
 from .ai_correction import AICorrection
+from .article_keyword import ArticleKeyword
+from .article_tags import ArticleMainTag, ArticleSubTag
 from .comment import Comment
 from .checkin import CheckinLog
 from .smart_collect import (
@@ -37,6 +39,8 @@ __all__ = [
     "Resource", "PortalModule", "EventLog", "UserAction", "UserPreference", "AnonymousAction",
     "SystemSetting", "DifyWorkflow", "ViewHistory", "AICallLog", "AITask", "AICorrection",
     "Comment", "CheckinLog", "ArticleEmbedding",
+    "ArticleKeyword",
+    "ArticleMainTag", "ArticleSubTag",
     "SmartCollectTask", "NewsClue", "NewsClueContent", "SmartCollectTaskClue",
     "SmartCollectArticleSource", "SmartCollectEvent", "SmartCollectEventClue",
     "SmartCollectEventSynthesis",

@@ -1,6 +1,6 @@
 <template>
   <div class="container detail">
-    <article v-loading="loading" class="detail__doc">
+    <article ref="detailDocRef" v-loading="loading" class="detail__doc">
       <template v-if="article">
         <!-- 面包屑 -->
         <nav class="detail__crumb" aria-label="面包屑">
@@ -29,7 +29,19 @@
         </figure>
 
         <!-- 正文（编辑器以 HTML 形式编写，生产环境建议对 content 做 XSS 过滤） -->
-        <div class="article-content detail__content" v-html="article.content"></div>
+        <div
+          ref="contentRef"
+          class="article-content detail__content"
+          v-html="article.content"
+        ></div>
+
+        <!-- 关键词知识链（从 article_main_tags / article_sub_tags 双表读取） -->
+        <KeywordPanel
+          ref="keywordPanelRef"
+          :keywords="keywords"
+          :article-id="article?.id"
+          @scroll-to-keyword="scrollToKeyword"
+        />
 
         <!-- 互动栏：点赞 / 收藏 / 不感兴趣 / 转发 -->
         <footer class="detail__actions" role="group" aria-label="文稿互动">
@@ -213,15 +225,70 @@
         </li>
       </ul>
     </aside>
+
+    <!-- 同一 AI 悬浮入口：未划选正文时总结全文，划选正文后解释选中内容。 -->
+    <Teleport to="body">
+      <button
+        v-if="article"
+        type="button"
+        class="ai-summary-fab"
+        :aria-expanded="aiSummaryOpen"
+        aria-controls="ai-summary-panel"
+        :aria-label="`打开 ${aiTaskTitle}`"
+        :title="`拖动或打开 ${aiTaskTitle}`"
+        :class="{ 'ai-summary-fab--dragging': aiFabDragging }"
+        :style="aiFabStyle"
+        @pointerdown="startAiFabDrag"
+        @click="toggleAiSummary"
+      >
+        <el-icon><MagicStick /></el-icon>
+      </button>
+
+      <section
+        v-if="article && aiSummaryOpen"
+        id="ai-summary-panel"
+        class="ai-summary-panel"
+        :aria-label="aiTaskTitle"
+        :style="aiSummaryPanelStyle"
+      >
+        <header class="ai-summary-panel__head">
+          <div class="ai-summary-panel__title-group">
+            <span class="ai-summary-panel__mark" aria-hidden="true"><el-icon><MagicStick /></el-icon></span>
+            <h2>{{ aiTaskTitle }}</h2>
+          </div>
+          <div class="ai-summary-panel__tools">
+            <button type="button" class="ai-summary-panel__close" :disabled="aiSummaryLoading" title="重新生成" @click="generateAiResponse">
+              <el-icon><Refresh /></el-icon>
+            </button>
+            <button type="button" class="ai-summary-panel__close" aria-label="关闭 AI 助手" title="关闭" @click="aiSummaryOpen = false">
+              <el-icon><Close /></el-icon>
+            </button>
+          </div>
+        </header>
+        <p v-if="aiSummaryLoading" class="ai-summary-panel__status">
+          <el-icon class="is-loading"><Loading /></el-icon>{{ aiTaskLoadingText }}
+        </p>
+        <template v-else-if="aiSummary">
+          <p v-if="aiSelectionText" class="ai-summary-panel__selection">“{{ aiSelectionText }}”</p>
+          <p class="ai-summary-panel__content">{{ aiSummary }}</p>
+        </template>
+        <div v-else class="ai-summary-panel__status ai-summary-panel__status--error">
+          <p>{{ aiSummaryError || `暂未生成${aiTaskTitle}` }}</p>
+          <button type="button" class="ai-summary-panel__retry" @click="generateAiResponse">重新生成</button>
+        </div>
+      </section>
+    </Teleport>
   </div>
 </template>
 
 <script setup>
-import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { articleApi, commentApi, eventApi, historyApi, interactionApi } from '../../api'
+import { Close, Loading, MagicStick, Refresh } from '@element-plus/icons-vue'
+import { articleApi, commentApi, eventApi, historyApi, interactionApi, keywordApi } from '../../api'
 import { useAuthStore } from '../../stores/auth'
+import KeywordPanel from '../../components/KeywordPanel.vue'
 
 const route = useRoute()
 const auth = useAuthStore()
@@ -231,6 +298,38 @@ const loading = ref(true)
 const liked = ref(false)
 const favorited = ref(false)
 const disliked = ref(false)
+// AI 阅读助手状态
+const keywords = ref([])
+const aiSummaryOpen = ref(false)
+const aiSummary = ref('')
+const aiSummaryLoading = ref(false)
+const aiSummaryError = ref('')
+const aiSummaryRequestId = ref(0)
+const aiSelectionText = ref('')
+const detailDocRef = ref(null)
+const aiFabPosition = ref(null)
+const aiFabDragging = ref(false)
+const aiFabDragState = ref(null)
+const aiFabDragged = ref(false)
+const aiViewport = ref({ width: window.innerWidth, height: window.innerHeight })
+const contentRef = ref(null)
+const keywordPanelRef = ref(null)
+const aiTaskTitle = computed(() => aiSelectionText.value ? 'AI 划选解释' : 'AI 全文总结')
+const aiTaskLoadingText = computed(() => aiSelectionText.value ? '正在解释划选内容…' : '正在生成总结…')
+const aiFabStyle = computed(() => aiFabPosition.value ? {
+  left: `${aiFabPosition.value.x}px`, top: `${aiFabPosition.value.y}px`, right: 'auto', bottom: 'auto',
+} : {})
+const aiSummaryPanelStyle = computed(() => {
+  if (!aiFabPosition.value) return {}
+  const { width, height } = aiViewport.value
+  const panelWidth = Math.min(340, width - 32)
+  const left = clamp(aiFabPosition.value.x, 16, Math.max(16, width - panelWidth - 16))
+  if (aiFabPosition.value.y < height / 2) {
+    const top = Math.min(aiFabPosition.value.y + 64, Math.max(16, height - 180))
+    return { left: `${left}px`, top: `${top}px`, right: 'auto', bottom: 'auto', maxHeight: `${Math.max(164, height - top - 16)}px` }
+  }
+  return { left: `${left}px`, right: 'auto', top: 'auto', bottom: `${Math.max(16, height - aiFabPosition.value.y + 12)}px`, maxHeight: `${Math.max(164, aiFabPosition.value.y - 28)}px` }
+})
 // 评论状态
 const comments = ref([])
 const commentTotal = ref(0)
@@ -270,6 +369,12 @@ async function loadArticle(id) {
     favorited.value = statusRes.favorited
     disliked.value = statusRes.disliked
     watchStart.value = Date.now()
+    aiSummary.value = ''
+    aiSummaryError.value = ''
+    aiSelectionText.value = ''
+    keywords.value = []
+    await nextTick()
+    positionAiFabAtArticleStart()
 
     // 观看埋点：进入详情页即上报
     eventApi.report({ event_type: 'view', article_id: id }).catch(() => {})
@@ -278,6 +383,8 @@ async function loadArticle(id) {
     // 相关推荐：同栏目已发布文稿（后端按发布时间新到旧返回）
     const res = await articleApi.related(id, { limit: 6 })
     related.value = res.items
+    // 加载关键词（静默失败，不影响主流程）
+    keywordApi.get(id).then(r => { keywords.value = r.keywords }).catch(() => {})
     // 评论区：首次进入加载第一页
     loadComments()
     // 先移除再添加，避免多次切换文章时重复绑定
@@ -291,6 +398,8 @@ async function loadArticle(id) {
 }
 
 onMounted(() => {
+  window.addEventListener('resize', updateAiViewport)
+  document.addEventListener('selectionchange', captureArticleSelection)
   loadArticle(Number(route.params.id))
 })
 
@@ -303,10 +412,117 @@ watch(
 onBeforeUnmount(() => {
   reportWatchDuration()
   window.removeEventListener('pagehide', onPageHide)
+  window.removeEventListener('resize', updateAiViewport)
+  document.removeEventListener('selectionchange', captureArticleSelection)
+  stopAiFabDrag()
 })
 
 function onPageHide() {
   reportWatchDuration()
+}
+
+function clamp(value, min, max) {
+  return Math.min(Math.max(value, min), max)
+}
+
+function updateAiViewport() {
+  aiViewport.value = { width: window.innerWidth, height: window.innerHeight }
+  if (aiFabPosition.value) {
+    aiFabPosition.value = { x: clamp(aiFabPosition.value.x, 16, Math.max(16, window.innerWidth - 68)), y: clamp(aiFabPosition.value.y, 16, Math.max(16, window.innerHeight - 68)) }
+  }
+}
+
+function positionAiFabAtArticleStart() {
+  if (aiFabPosition.value || !detailDocRef.value) return
+  const rect = detailDocRef.value.getBoundingClientRect()
+  aiFabPosition.value = { x: clamp(rect.right - 68, 16, Math.max(16, window.innerWidth - 68)), y: clamp(rect.top + 16, 16, Math.max(16, window.innerHeight - 68)) }
+}
+
+function startAiFabDrag(event) {
+  if (event.button !== 0 || !aiFabPosition.value) return
+  aiFabDragging.value = true
+  aiFabDragged.value = false
+  aiFabDragState.value = { pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, originX: aiFabPosition.value.x, originY: aiFabPosition.value.y }
+  event.currentTarget.setPointerCapture?.(event.pointerId)
+  window.addEventListener('pointermove', moveAiFab)
+  window.addEventListener('pointerup', stopAiFabDrag)
+  window.addEventListener('pointercancel', stopAiFabDrag)
+}
+
+function moveAiFab(event) {
+  const state = aiFabDragState.value
+  if (!state || event.pointerId !== state.pointerId) return
+  const dx = event.clientX - state.startX
+  const dy = event.clientY - state.startY
+  if (Math.abs(dx) > 4 || Math.abs(dy) > 4) aiFabDragged.value = true
+  aiFabPosition.value = { x: clamp(state.originX + dx, 16, Math.max(16, aiViewport.value.width - 68)), y: clamp(state.originY + dy, 16, Math.max(16, aiViewport.value.height - 68)) }
+}
+
+function stopAiFabDrag() {
+  if (!aiFabDragState.value) return
+  aiFabDragState.value = null
+  aiFabDragging.value = false
+  window.removeEventListener('pointermove', moveAiFab)
+  window.removeEventListener('pointerup', stopAiFabDrag)
+  window.removeEventListener('pointercancel', stopAiFabDrag)
+  window.setTimeout(() => { aiFabDragged.value = false }, 0)
+}
+
+function captureArticleSelection() {
+  const selection = window.getSelection()
+  if (!selection || selection.rangeCount === 0 || !contentRef.value || selection.isCollapsed) return
+  const range = selection.getRangeAt(0)
+  const root = range.commonAncestorContainer.nodeType === Node.ELEMENT_NODE ? range.commonAncestorContainer : range.commonAncestorContainer.parentElement
+  if (!root || !contentRef.value.contains(root)) return
+  const text = selection.toString().replace(/\s+/g, ' ').trim().slice(0, 1200)
+  if (!text || text === aiSelectionText.value) return
+  aiSelectionText.value = text
+  aiSummaryRequestId.value += 1
+  aiSummary.value = ''
+  aiSummaryError.value = ''
+  aiSummaryLoading.value = false
+}
+
+function syncArticleSelection() {
+  const selection = window.getSelection()
+  if (!selection || selection.rangeCount === 0 || selection.isCollapsed || !contentRef.value) {
+    aiSelectionText.value = ''
+    return
+  }
+  const range = selection.getRangeAt(0)
+  const root = range.commonAncestorContainer.nodeType === Node.ELEMENT_NODE ? range.commonAncestorContainer : range.commonAncestorContainer.parentElement
+  if (!root || !contentRef.value.contains(root)) aiSelectionText.value = ''
+}
+
+function toggleAiSummary() {
+  if (aiFabDragged.value) return
+  syncArticleSelection()
+  aiSummaryOpen.value = !aiSummaryOpen.value
+  if (aiSummaryOpen.value && !aiSummary.value && !aiSummaryLoading.value) generateAiResponse()
+}
+
+async function generateAiResponse() {
+  if (!article.value || aiSummaryLoading.value) return
+  const requestId = aiSummaryRequestId.value + 1
+  aiSummaryRequestId.value = requestId
+  aiSummaryLoading.value = true
+  aiSummaryError.value = ''
+  try {
+    const isSelection = Boolean(aiSelectionText.value)
+    const result = isSelection
+      ? await articleApi.explainSelection(article.value.id, aiSelectionText.value)
+      : await articleApi.aiSummary(article.value.id)
+    const responseText = isSelection ? result?.data?.explanation : result?.data?.summary
+    if (!responseText) throw new Error('AI 返回内容不完整，请重新尝试')
+    if (requestId === aiSummaryRequestId.value) aiSummary.value = responseText
+  } catch (error) {
+    if (requestId === aiSummaryRequestId.value) {
+      aiSummary.value = ''
+      aiSummaryError.value = typeof error === 'string' && error.trim() ? error : 'AI 服务暂时不可用，请稍后重新尝试'
+    }
+  } finally {
+    if (requestId === aiSummaryRequestId.value) aiSummaryLoading.value = false
+  }
 }
 
 // 切换文章时重置评论区
@@ -448,6 +664,135 @@ function reportWatchDuration() {
       if (res?.reached_limit) watchLimitReached.value = true
     })
     .catch(() => {})
+}
+
+// ── 关键词与正文联动 ──
+
+// 监听 keywords 变化，自动标记正文中的主关键词
+watch(keywords, () => {
+  nextTick(() => markKeywordsInArticle())
+})
+
+// 监听 article.content 变化（路由切换时），重新标记
+watch(() => article.value?.content, () => {
+  nextTick(() => markKeywordsInArticle())
+})
+
+// 在正文中标记主关键词（虚线下划线 + 点击弹出解释）
+function markKeywordsInArticle() {
+  const container = contentRef.value
+  if (!container || !keywords.value.length) return
+
+  // 先清除旧标记
+  const oldMarks = container.querySelectorAll('.keyword-mark')
+  oldMarks.forEach(el => {
+    const parent = el.parentNode
+    if (parent) {
+      parent.replaceChild(document.createTextNode(el.textContent), el)
+      parent.normalize()
+    }
+  })
+
+  // 构建主关键词集合（按长度降序，避免短词覆盖长词）
+  const kwSet = new Set()
+  for (const g of keywords.value) {
+    const mainKw = g.chain[g.chain.length - 1]
+    if (mainKw) kwSet.add(mainKw)
+  }
+  const sortedKws = [...kwSet].sort((a, b) => b.length - a.length)
+
+  const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT, null, false)
+  const textNodes = []
+  while (walker.nextNode()) textNodes.push(walker.currentNode)
+
+  for (const node of textNodes) {
+    // 跳过已在 keyword-mark 内的文本节点
+    if (node.parentElement?.closest('.keyword-mark, .keyword-group__label, .keyword-panel, .detail__head, .detail__crumb, .detail__cover, .detail__actions, .detail__login-tip')) continue
+
+    let text = node.textContent
+    let replaced = false
+    const fragments = []
+    let lastIdx = 0
+
+    // 找文本中所有匹配的关键词位置
+    const matches = []
+    for (const kw of sortedKws) {
+      let pos = 0
+      while ((pos = text.indexOf(kw, pos)) !== -1) {
+        matches.push({ start: pos, end: pos + kw.length, kw })
+        pos += kw.length
+      }
+    }
+    if (!matches.length) continue
+
+    // 按位置排序，处理重叠（取范围大的）
+    matches.sort((a, b) => a.start - b.start || b.end - a.end)
+    const filtered = []
+    let prevEnd = 0
+    for (const m of matches) {
+      if (m.start >= prevEnd) {
+        filtered.push(m)
+        prevEnd = m.end
+      }
+    }
+
+    for (const m of filtered) {
+      if (m.start > lastIdx) {
+        fragments.push(document.createTextNode(text.slice(lastIdx, m.start)))
+      }
+      const span = document.createElement('span')
+      span.className = 'keyword-mark'
+      span.dataset.tag = m.kw
+      span.textContent = m.kw
+      span.title = `点击查看「${m.kw}」的解释`
+      span.onclick = (e) => {
+        e.stopPropagation()
+        if (keywordPanelRef.value) {
+          keywordPanelRef.value.openExplain(m.kw, true)
+        }
+      }
+      fragments.push(span)
+      lastIdx = m.end
+      replaced = true
+    }
+
+    if (replaced) {
+      if (lastIdx < text.length) {
+        fragments.push(document.createTextNode(text.slice(lastIdx)))
+      }
+      const parent = node.parentNode
+      if (parent) {
+        for (const frag of fragments) {
+          parent.insertBefore(frag, node)
+        }
+        parent.removeChild(node)
+      }
+    }
+  }
+}
+
+// 滚动到关键词首次出现位置并闪烁 2 秒
+function scrollToKeyword(keyword) {
+  const container = contentRef.value
+  if (!container) return
+
+  // 找到正文中第一个匹配的关键词标记
+  const mark = container.querySelector(`.keyword-mark[data-tag="${CSS.escape(keyword)}"]`)
+  if (!mark) {
+    ElMessage.info(`正文中未找到「${keyword}」`)
+    return
+  }
+
+  // 清除之前的闪烁
+  const prevFlashes = container.querySelectorAll('.keyword-mark--flash')
+  prevFlashes.forEach(el => el.classList.remove('keyword-mark--flash'))
+
+  // 滚动到目标位置
+  mark.scrollIntoView({ behavior: 'smooth', block: 'center' })
+
+  // 闪烁 2 秒
+  mark.classList.add('keyword-mark--flash')
+  setTimeout(() => mark.classList.remove('keyword-mark--flash'), 2000)
 }
 
 async function toggleLike() {
@@ -619,6 +964,114 @@ function getFingerprint() {
   padding-right: 8px;
   color: var(--color-ink);
 }
+
+.ai-summary-fab {
+  --ai-fab-bg: var(--color-accent);
+  --ai-fab-border: var(--color-accent);
+  --ai-fab-text: var(--color-paper);
+  --ai-fab-hover-bg: var(--color-paper);
+  --ai-fab-hover-text: var(--color-accent);
+  position: fixed;
+  z-index: 40;
+  right: 28px;
+  bottom: 28px;
+  display: grid;
+  width: 52px;
+  height: 52px;
+  place-items: center;
+  border: var(--rule) solid var(--ai-fab-border);
+  border-radius: 50%;
+  background: var(--ai-fab-bg);
+  color: var(--ai-fab-text);
+  box-shadow: var(--shadow-float);
+  cursor: grab;
+  font-size: 24px;
+  touch-action: none;
+  user-select: none;
+}
+
+.ai-summary-fab:hover,
+.ai-summary-fab:focus-visible {
+  background: var(--ai-fab-hover-bg);
+  color: var(--ai-fab-hover-text);
+  transform: translateY(-2px);
+}
+
+.ai-summary-fab--dragging,
+.ai-summary-fab--dragging:hover { cursor: grabbing; transform: none; }
+
+.ai-summary-panel {
+  position: fixed;
+  z-index: 40;
+  right: 28px;
+  bottom: 92px;
+  width: min(340px, calc(100vw - 32px));
+  max-height: min(520px, calc(100vh - 120px));
+  overflow-y: auto;
+  border: var(--rule) solid var(--color-rule-strong);
+  border-radius: var(--radius-sm);
+  background: var(--color-paper);
+  box-shadow: var(--shadow-float);
+}
+
+.ai-summary-panel__head,
+.ai-summary-panel__title-group,
+.ai-summary-panel__tools,
+.ai-summary-panel__status { display: flex; align-items: center; }
+
+.ai-summary-panel__head { justify-content: space-between; gap: var(--space-3); padding: var(--space-4); border-bottom: var(--rule) solid var(--color-rule); }
+.ai-summary-panel__title-group { min-width: 0; gap: var(--space-2); }
+.ai-summary-panel__tools { flex: 0 0 auto; gap: 2px; }
+.ai-summary-panel__mark { display: grid; width: 28px; height: 28px; place-items: center; border-radius: 50%; background: var(--color-primary-soft); color: var(--color-accent); }
+.ai-summary-panel__title-group h2 { margin: 0; color: var(--color-ink); font-family: inherit; font-size: var(--text-base); }
+.ai-summary-panel__close { display: grid; width: 32px; height: 32px; place-items: center; border: 0; border-radius: 50%; background: transparent; color: var(--color-ink-3); font-size: 18px; }
+.ai-summary-panel__close:hover, .ai-summary-panel__close:focus-visible { background: var(--color-primary-soft); color: var(--color-accent); }
+.ai-summary-panel__close:disabled { cursor: wait; opacity: .5; }
+.ai-summary-panel__content, .ai-summary-panel__status { margin: 0; padding: var(--space-4); color: var(--color-ink-2); font-size: var(--text-sm); line-height: var(--leading-relaxed); }
+.ai-summary-panel__status { gap: var(--space-2); color: var(--color-ink-3); }
+.ai-summary-panel__status--error { display: block; }
+.ai-summary-panel__status--error p { margin: 0 0 var(--space-3); }
+.ai-summary-panel__selection { margin: var(--space-4) var(--space-4) 0; padding: var(--space-2) var(--space-3); border-left: 3px solid var(--color-accent); background: var(--color-primary-soft); color: var(--color-ink-2); font-size: var(--text-xs); line-height: var(--leading-relaxed); }
+.ai-summary-panel__selection + .ai-summary-panel__content { padding-top: var(--space-3); }
+.ai-summary-panel__retry { min-height: 32px; padding: 5px 10px; border: 1px solid var(--color-accent); border-radius: var(--radius-sm); background: var(--color-paper); color: var(--color-accent); font-size: var(--text-xs); font-weight: 600; }
+.ai-summary-panel__retry:hover, .ai-summary-panel__retry:focus-visible { background: var(--color-primary-soft); }
+
+/* 悬浮层使用 body 上同步的主题类：Teleport 到 body 后仍可随门户换肤。 */
+:global(body.theme-cyber) .ai-summary-fab {
+  --ai-fab-bg: var(--color-primary);
+  --ai-fab-border: var(--color-primary);
+  --ai-fab-text: #06111e;
+  --ai-fab-hover-bg: var(--color-paper);
+  --ai-fab-hover-text: var(--color-primary);
+  box-shadow: 0 0 0 1px rgba(0, 229, 255, .3), 0 0 24px rgba(0, 229, 255, .46);
+}
+
+:global(body.theme-cyber) .ai-summary-panel {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 1px rgba(0, 229, 255, .2), 0 0 28px rgba(0, 229, 255, .18);
+}
+
+:global(body.theme-cyber) .ai-summary-panel__head { border-bottom-color: rgba(0, 229, 255, .35); }
+:global(body.theme-cyber) .ai-summary-panel__mark { background: rgba(0, 229, 255, .14); color: var(--color-primary); }
+:global(body.theme-cyber) .ai-summary-panel__selection { border-left-color: var(--color-primary); background: rgba(0, 229, 255, .1); }
+:global(body.theme-cyber) .ai-summary-panel__retry { border-color: var(--color-primary); color: var(--color-primary); }
+
+:global(body.theme-comic) .ai-summary-fab {
+  --ai-fab-bg: var(--color-secondary);
+  --ai-fab-border: var(--color-ink);
+  --ai-fab-text: var(--color-ink);
+  --ai-fab-hover-bg: var(--color-accent);
+  --ai-fab-hover-text: #fff;
+  border-width: 3px;
+  border-radius: 8px;
+  box-shadow: 4px 4px 0 var(--color-ink);
+}
+
+:global(body.theme-comic) .ai-summary-panel { border-width: 3px; border-color: var(--color-ink); border-radius: 10px; box-shadow: 7px 7px 0 var(--color-ink); }
+:global(body.theme-comic) .ai-summary-panel__head { background: var(--color-secondary); border-bottom-width: 3px; border-bottom-color: var(--color-ink); }
+:global(body.theme-comic) .ai-summary-panel__mark { background: var(--color-accent); color: #fff; border: 2px solid var(--color-ink); }
+:global(body.theme-comic) .ai-summary-panel__selection { border-left-color: var(--color-accent); background: var(--color-accent-soft); }
+:global(body.theme-comic) .ai-summary-panel__retry { border: 2px solid var(--color-ink); border-radius: 4px; color: var(--color-ink); box-shadow: 2px 2px 0 var(--color-ink); }
 
 .detail__actions {
   display: flex;
@@ -979,5 +1432,40 @@ function getFingerprint() {
     justify-content: center;
     min-height: var(--size-touch);
   }
+
+  .ai-summary-fab { right: 16px; bottom: 20px; }
+  .ai-summary-panel { right: 16px; bottom: 84px; max-height: min(480px, calc(100vh - 108px)); }
+}
+</style>
+
+<!-- 非 scoped 样式：关键词标记（动态插入的 DOM 元素不能使用 scoped 样式） -->
+<style>
+/* 正文中的关键词标记 — 仅虚线下划线，不改变颜色 */
+.keyword-mark {
+  cursor: pointer;
+  border-bottom: 2px dashed var(--color-primary);
+  transition: border-color 0.15s ease;
+  padding-bottom: 1px;
+}
+
+.keyword-mark:hover {
+  border-bottom-style: solid;
+  border-bottom-width: 2.5px;
+}
+
+/* 闪烁动画 */
+.keyword-mark--flash {
+  animation: kw-flash 2s ease-in-out;
+  border-radius: 4px;
+}
+
+@keyframes kw-flash {
+  0%   { background: transparent; box-shadow: none; }
+  15%  { background: rgba(255, 193, 7, 0.35); box-shadow: 0 0 12px rgba(255, 193, 7, 0.3); }
+  30%  { background: transparent; box-shadow: none; }
+  45%  { background: rgba(255, 193, 7, 0.35); box-shadow: 0 0 12px rgba(255, 193, 7, 0.3); }
+  60%  { background: transparent; box-shadow: none; }
+  75%  { background: rgba(255, 193, 7, 0.2); box-shadow: 0 0 8px rgba(255, 193, 7, 0.15); }
+  100% { background: transparent; box-shadow: none; }
 }
 </style>

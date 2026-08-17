@@ -34,6 +34,8 @@ export const articleApi = {
   list: (params) => client.get('/articles', { params }),
   cities: () => client.get('/articles/cities'),
   detail: (id) => client.get(`/articles/${id}`),
+  aiSummary: (id) => client.post(`/articles/${id}/ai-summary`),
+  explainSelection: (id, selectedText) => client.post(`/articles/${id}/ai-selection-explanation`, { selected_text: selectedText }),
   related: (id, params) => client.get(`/articles/${id}/related`, { params }),
   // 个性化推荐：可选登录，登录且历史足量时返回向量召回结果，否则通用推荐
   recommend: (params) => client.get('/articles/recommend', { params }),
@@ -274,4 +276,22 @@ export const smartCollectApi = {
   getClueContent: (clueId) => client.get(`/smart-collect/clues/${clueId}/content`),
   evaluationSummary: () => client.get('/smart-collect/evaluation/summary'),
   evaluationOutliers: (params) => client.get('/smart-collect/evaluation/outliers', { params }),
+}
+
+// ---- 文章关键词（AI 提取的知识链，门户阅读页展示）----
+export const keywordApi = {
+  get: (articleId) => client.get(`/articles/${articleId}/keywords`),
+  remove: (articleId) => client.delete(`/articles/${articleId}/keywords`),
+  /** 流式解释标签，返回 ReadableStream */
+  explainStream: (articleId, tag) =>
+    fetch(`/api/articles/${articleId}/keywords/explain?tag=${encodeURIComponent(tag)}`),
+}
+
+// ---- 标签推荐（根据标签推荐关联文章）----
+export const tagApi = {
+  /** 根据标签推荐关联文章，返回 { source, tag, items, total, message } */
+  recommend: (tag, articleId = null) => {
+    const params = articleId ? { exclude_article_id: articleId } : {}
+    return client.get(`/tags/${encodeURIComponent(tag)}/recommend`, { params, timeout: 20000 })
+  },
 }

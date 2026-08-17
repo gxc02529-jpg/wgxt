@@ -25,3 +25,8 @@ class ReviewIn(BaseModel):
     action: str = Field(pattern="^(approve|reject)$", description="approve 通过 / reject 驳回")
     comment: str = Field(default="", max_length=500, description="审核意见")
 
+
+class ArticleSelectionExplainIn(BaseModel):
+    """用户在文章正文中划选的文字。"""
+    selected_text: str = Field(min_length=2, max_length=1200, description="划选的正文内容")
+

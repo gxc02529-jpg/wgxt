@@ -8,7 +8,7 @@
 """
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, Query, UploadFile
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
@@ -25,10 +25,12 @@ from ..models.ai_task import AITask
 from ..models.review import ArticleReview
 from ..models.user import User
 from ..models.view_history import ViewHistory
-from ..schemas.article import ArticleIn
+from ..schemas.article import ArticleIn, ArticleSelectionExplainIn
 from ..schemas.article_writing import ArticleWritingResponse
 from ..services import embedding_service
+from ..services.ai_service import AIServiceError
 from ..services.article_import_service import import_excel
+from ..services.article_summary_service import explain_article_selection, summarize_article
 from ..services.llm_provider import OpenAICompatibleLLMProvider
 from ..services.settings_service import get_setting
 from ..services.smart_collect_article_service import SmartCollectArticleService
@@ -345,6 +347,51 @@ def get_article(article_id: int, db: Session = Depends(get_db), user: User | Non
     return data
 
 
+@router.post("/{article_id}/ai-summary", summary="按需生成文章全文总结")
+async def generate_article_summary(
+    article_id: int,
+    db: Session = Depends(get_db),
+    user: User | None = Depends(get_optional_user),
+):
+    """用户主动点击后生成总结，结果不写入数据库。"""
+    article = db.get(Article, article_id)
+    if not article:
+        raise HTTPException(404, "文稿不存在")
+    if article.status != "published" and not (_can_manage(article, user) or (user is not None and user.role == "moderator")):
+        raise HTTPException(403, "该文稿尚未发布")
+    try:
+        result = await summarize_article(article)
+    except AIServiceError as exc:
+        raise HTTPException(503, str(exc)) from None
+    except Exception:
+        # 不向前端暴露模型供应商的原始异常，避免页面显示 500 技术错误。
+        raise HTTPException(503, "AI 服务暂时不可用，请稍后重新尝试") from None
+    return {"message": "AI 全文总结生成成功", "data": result}
+
+
+@router.post("/{article_id}/ai-selection-explanation", summary="解释用户划选的文章正文")
+async def generate_article_selection_explanation(
+    article_id: int,
+    body: ArticleSelectionExplainIn,
+    db: Session = Depends(get_db),
+    user: User | None = Depends(get_optional_user),
+):
+    """只解释当前文章正文中的划选文字，结果不写入数据库。"""
+    article = db.get(Article, article_id)
+    if not article:
+        raise HTTPException(404, "文稿不存在")
+    if article.status != "published" and not (_can_manage(article, user) or (user is not None and user.role == "moderator")):
+        raise HTTPException(403, "该文稿尚未发布")
+    try:
+        result = await explain_article_selection(article, body.selected_text)
+    except AIServiceError as exc:
+        raise HTTPException(503, str(exc)) from None
+    except Exception:
+        # 保持与全文总结一致的安全兜底，避免异常中断文章阅读页面。
+        raise HTTPException(503, "AI 服务暂时不可用，请稍后重新尝试") from None
+    return {"message": "AI 划选内容解释生成成功", "data": result}
+
+
 @router.get("/{article_id}/related", summary="相关推荐（同栏目已发布文稿，按发布时间新到旧）")
 def related_articles(
     article_id: int,
@@ -391,7 +438,7 @@ def _bind_ai_records_by_draft_key(db: Session, article_id: int, draft_key: str |
 
 
 @router.post("", summary="创建文稿（编辑/管理员，先存为草稿）")
-def create_article(body: ArticleIn, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+def create_article(body: ArticleIn, background_tasks: BackgroundTasks, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     # 编辑功能：编辑 / 管理员（moderator）/ 系统管理员
     if user.role not in ("editor", "moderator", "admin"):
         raise HTTPException(403, "仅编辑可写作文稿")
@@ -416,6 +463,11 @@ def create_article(body: ArticleIn, db: Session = Depends(get_db), user: User = 
     # 向量化入库：尽力而为，向量化失败不影响草稿保存（全量回填接口可修复）
     if embedding_service.sync_article_embedding(db, article):
         db.commit()
+    # 新文章入库后异步触发 AI 关键词提取（不阻塞创建流程，内部独立 session）
+    content = article.content_source or strip_html(article.content or "")
+    if content and content.strip():
+        from .keywords import extract_and_save_keywords
+        background_tasks.add_task(extract_and_save_keywords, article.id, content)
     return {"message": "草稿已保存", "article": article.to_dict()}
 
 
