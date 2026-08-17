@@ -234,8 +234,22 @@ def dispatch(feature_type: int, inputs: dict, context: dict | None = None) -> di
         return {"items": _extract_check_items(data.get("outputs") or {})}
 
     if feature_type == FEATURE_SCORE:
-        if not content:
+        if not content or not title :
             raise ValueError("请先填写文稿正文")
+        db = SessionLocal()
+        try:
+            data = run_workflow(
+                db,
+                inputs={
+                    "article_title": title,
+                    "article_content": content
+                },
+                name="article_pingfen",
+            )
+        finally:
+            db.close()
+
+
         return {
             "items": [
                 {"维度": "标题与正文适配程度", "得分": "15/20", "建议": "标题与正文匹配程度高"},
