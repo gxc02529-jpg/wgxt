@@ -34,8 +34,8 @@ export const articleApi = {
   list: (params) => client.get('/articles', { params }),
   cities: () => client.get('/articles/cities'),
   detail: (id) => client.get(`/articles/${id}`),
-  aiSummary: (id) => client.post(`/articles/${id}/ai-summary`),
-  explainSelection: (id, selectedText) => client.post(`/articles/${id}/ai-selection-explanation`, { selected_text: selectedText }),
+  aiSummary: (id) => client.post(`/articles/${id}/ai-summary`, null, { timeout: 180000 }),
+  explainSelection: (id, selectedText) => client.post(`/articles/${id}/ai-selection-explanation`, { selected_text: selectedText }, { timeout: 180000 }),
   related: (id, params) => client.get(`/articles/${id}/related`, { params }),
   // 个性化推荐：可选登录，登录且历史足量时返回向量召回结果，否则通用推荐
   recommend: (params) => client.get('/articles/recommend', { params }),
