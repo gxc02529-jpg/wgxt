@@ -47,7 +47,7 @@ FEATURE_NEEDS = {
     FEATURE_SUMMARY: ["title", "content"],
     FEATURE_REVIEW: ["title", "content"],
     FEATURE_CHECK: ["content"],
-    FEATURE_SCORE: ["content"],
+    FEATURE_SCORE: ["title", "content"],  # 打分需要标题+正文（见 article_pingfen.input_schema）
 }
 
 router = APIRouter(prefix="/ai/assist", tags=["AI 协作台"])

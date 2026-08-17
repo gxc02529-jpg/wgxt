@@ -531,7 +531,8 @@ def main():
             ("review", {"title": ai_title, "content": ai_content}, lambda d: "overall_risk" in d and isinstance(d.get("risk_list"), list)),
             # 内容校验已接入真实 Dify 工作流 article_neirong，断言返回 items 列表即可（条数取决于模型）
             ("check", {"content": ai_content}, lambda d: isinstance(d.get("items"), list)),
-            ("score", {"content": ai_content}, lambda d: d["总分"] == "80/100"),
+            # 文稿打分已接入真实 Dify 工作流 article_pingfen，入参标题+正文，断言返回结构化结果
+            ("score", {"title": ai_title, "content": ai_content}, lambda d: "总分" in d and isinstance(d.get("分项评分"), list)),
         ]
         for name, payload, check in cases:
             r = client.post(f"{BASE}/ai/assist/{name}", headers=ed_h, json=payload)

@@ -250,21 +250,25 @@
               调用
             </el-button>
           </div>
-          <div v-if="checkItems.length" class="ai-tool__result ai-check">
-            <p class="ai-check__hint">点击条目：在正文中定位选中错误位置，并复制「修改结果」</p>
-            <button
-              v-for="(item, index) in checkItems"
-              :key="index"
-              type="button"
-              class="ai-check__item"
-              :class="{ 'is-active': activeCheckIndex === index }"
-              @click="locateError(index)"
-            >
-              <span class="ai-check__type">{{ item['错误类型'] }}</span>
-              <span class="ai-check__pos">原文：{{ item['原文位置'] }}</span>
-              <span class="ai-check__fix">改：{{ item['修改结果'] }}</span>
-              <span class="ai-check__tip">{{ item['修改建议'] }}</span>
-            </button>
+          <!-- checkDone：调用已成功返回（含空结果）；未调用/失败时不展示 -->
+          <div v-if="checkDone" class="ai-tool__result ai-check">
+            <p v-if="checkItems.length" class="ai-check__hint">点击条目：在正文中定位选中错误位置，并复制「修改结果」</p>
+            <template v-if="checkItems.length">
+              <button
+                v-for="(item, index) in checkItems"
+                :key="index"
+                type="button"
+                class="ai-check__item"
+                :class="{ 'is-active': activeCheckIndex === index }"
+                @click="locateError(index)"
+              >
+                <span class="ai-check__type">{{ item['错误类型'] }}</span>
+                <span class="ai-check__pos">原文：{{ item['原文位置'] }}</span>
+                <span class="ai-check__fix">改：{{ item['修改结果'] }}</span>
+                <span class="ai-check__tip">{{ item['修改建议'] }}</span>
+              </button>
+            </template>
+            <p v-else class="ai-check__empty">未检测到明显问题，正文内容通过校验</p>
           </div>
         </article>
 
@@ -288,11 +292,23 @@
               调用
             </el-button>
           </div>
-          <div v-if="scoreItems.length" class="ai-tool__result ai-score">
-            <div class="ai-score__total">
-              <span class="ai-score__label">总分</span>
-              <span class="ai-score__value">{{ scoreTotal }}</span>
+          <div v-if="hasScore" class="ai-tool__result ai-score">
+            <!-- 综合等级 + 总分 -->
+            <div class="ai-score__head">
+              <div class="ai-score__grade-box">
+                <span class="ai-score__label">综合等级</span>
+                <span class="ai-score__grade">{{ scoreGrade || '未评级' }}</span>
+              </div>
+              <div class="ai-score__total">
+                <span class="ai-score__label">总分</span>
+                <span class="ai-score__value">{{ scoreTotal }}</span>
+              </div>
             </div>
+
+            <!-- 整体总结 -->
+            <p v-if="scoreSummary" class="ai-score__summary">{{ scoreSummary }}</p>
+
+            <!-- 分项评分 -->
             <div v-for="(item, index) in scoreItems" :key="index" class="ai-score__row">
               <div class="ai-score__row-head">
                 <span>{{ item['维度'] }}</span>
@@ -304,7 +320,19 @@
                 :stroke-width="6"
                 class="ai-score__bar"
               />
-              <p class="ai-score__tip">建议：{{ item['建议'] }}</p>
+              <p v-if="item['建议']" class="ai-score__tip">建议：{{ item['建议'] }}</p>
+            </div>
+
+            <!-- 现存问题清单 -->
+            <div v-if="scoreIssues.length" class="ai-score__list">
+              <div class="ai-score__list-title">现存问题清单</div>
+              <p v-for="(issue, i) in scoreIssues" :key="`issue-${i}`" class="ai-score__issue">{{ issue }}</p>
+            </div>
+
+            <!-- 标题优化建议 -->
+            <div v-if="scoreSuggestions.length" class="ai-score__list">
+              <div class="ai-score__list-title">标题优化建议</div>
+              <p v-for="(sug, i) in scoreSuggestions" :key="`sug-${i}`" class="ai-score__suggestion">{{ sug }}</p>
             </div>
           </div>
         </article>
@@ -347,7 +375,7 @@ const NEEDS = {
   summary: ['title', 'content'],
   review: ['title', 'content'],
   check: ['content'],
-  score: ['content'],
+  score: ['title', 'content'],
 }
 
 // 功能键→后端 feature_type 的映射（用于恢复最近一次任务）
@@ -361,10 +389,15 @@ const correcting = ref(false)
 const summaryResult = ref('')
 const reviewItems = ref([])
 const checkItems = ref([])
+const checkDone = ref(false)
 const activeCheckIndex = ref(-1)
 const locateHint = ref('')
 const scoreItems = ref([])
 const scoreTotal = ref('')
+const scoreGrade = ref('')
+const scoreSummary = ref('')
+const scoreIssues = ref([])
+const scoreSuggestions = ref([])
 
 // 异步任务轮询：每 2 秒一次，最长 5 分钟（当前假实现秒级完成，接入真实模型后保持即可）
 const POLL_INTERVAL_MS = 2000
@@ -509,6 +542,12 @@ function scorePercent(point) {
   return Math.round((Number(match[1]) / Number(match[2])) * 100)
 }
 
+// 文稿打分结果：有总分/等级/总结/分项任一即展示
+const hasScore = computed(() => {
+  return Boolean(scoreTotal.value || scoreGrade.value || scoreSummary.value)
+    || (Array.isArray(scoreItems.value) && scoreItems.value.length > 0)
+})
+
 // 多维度审核结果：有总体风险或明细即展示
 const hasReview = computed(() => {
   const r = reviewItems.value || {}
@@ -576,10 +615,15 @@ function applyResult(key, data, silent = false) {
     reviewItems.value = data
   } else if (key === 'check') {
     checkItems.value = data.items || []
+    checkDone.value = true
     activeCheckIndex.value = -1
   } else if (key === 'score') {
-    scoreItems.value = data.items || []
+    scoreItems.value = data['分项评分'] || []
     scoreTotal.value = data['总分'] || ''
+    scoreGrade.value = data['综合等级'] || ''
+    scoreSummary.value = data['整体总结'] || ''
+    scoreIssues.value = data['现存问题清单'] || []
+    scoreSuggestions.value = data['标题优化建议'] || []
   }
 }
 
@@ -666,10 +710,15 @@ watch(
       summaryResult.value = ''
       reviewItems.value = []
       checkItems.value = []
+      checkDone.value = false
       activeCheckIndex.value = -1
       locateHint.value = ''
       scoreItems.value = []
       scoreTotal.value = ''
+      scoreGrade.value = ''
+      scoreSummary.value = ''
+      scoreIssues.value = []
+      scoreSuggestions.value = []
       Object.keys(loading).forEach((key) => { loading[key] = false })
       restoreLatestResults()
     } else {
@@ -1137,6 +1186,13 @@ watch(
   color: var(--color-ink-3, #94a3b8);
 }
 
+.ai-check__empty {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: #15803d;
+}
+
 .ai-check__type {
   font-weight: 700;
   color: var(--color-danger, #dc2626);
@@ -1157,11 +1213,87 @@ watch(
   width: 100%;
 }
 
+.ai-score__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.ai-score__grade-box {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.ai-score__grade {
+  font-family: var(--font-heading);
+  font-size: 18px;
+  font-weight: 800;
+  color: var(--color-primary, #2563eb);
+  line-height: 1.2;
+}
+
 .ai-score__total {
   display: flex;
-  align-items: baseline;
-  gap: 8px;
-  margin-bottom: 8px;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+}
+
+.ai-score__summary {
+  margin: 0 0 10px;
+  padding-bottom: 10px;
+  border-bottom: 1px dashed var(--color-rule, #e2e8f0);
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--color-ink-2, #64748b);
+}
+
+.ai-score__list {
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px dashed var(--color-rule, #e2e8f0);
+}
+
+.ai-score__list-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--color-ink, #1e293b);
+  margin-bottom: 4px;
+}
+
+.ai-score__issue,
+.ai-score__suggestion {
+  margin: 0 0 4px;
+  padding-left: 10px;
+  position: relative;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--color-ink-2, #64748b);
+}
+
+.ai-score__issue::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 7px;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--color-danger, #dc2626);
+}
+
+.ai-score__suggestion::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 7px;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--color-success, #16a34a);
 }
 
 .ai-score__label {

@@ -154,6 +154,97 @@ def _extract_review_result(outputs) -> dict:
     }
 
 
+def _extract_score_result(outputs) -> dict:
+    """从 Dify outputs 中提取文稿打分结果
+
+    返回结构固定为 {综合等级, 整体总结, 现存问题清单, 标题优化建议, 分项评分, 总分}；
+    分项评分元素含 维度/得分/建议，两个清单为字符串数组。
+
+    工作流由 LLM 生成 JSON，字段名存在漂移（分项评分/分项/分项得分/维度评分 均出现过，
+    个别运行还会缺某个清单）。解析采用「已知键名优先 + 结构兜底」：
+    - 分项评分：识别含「维度/得分」的字典数组；
+    - 现存问题/标题优化建议：识别字符串数组（问题在前、建议在后）；
+    - 总分：识别形如 90/100 的字符串。
+    """
+    raw = outputs
+    if isinstance(raw, str):
+        raw = _try_json(raw) or raw
+    if isinstance(raw, dict):
+        for key in ("result", "outputs", "data", "text"):
+            if isinstance(raw.get(key), (str, dict)):
+                raw = raw[key]
+                break
+    if isinstance(raw, str):
+        raw = _try_json(raw) or {}
+    if not isinstance(raw, dict):
+        return {"综合等级": "", "整体总结": "", "现存问题清单": [], "标题优化建议": [], "分项评分": [], "总分": ""}
+
+    def _first_str(*keys):
+        for k in keys:
+            v = raw.get(k)
+            if isinstance(v, str) and v.strip():
+                return v.strip()
+        return ""
+
+    def _first_list(*keys):
+        for k in keys:
+            v = raw.get(k)
+            if isinstance(v, list):
+                return k, v
+        return None, None
+
+    def _strs(value):
+        if isinstance(value, list):
+            return [str(x).strip() for x in value if str(x).strip()]
+        return []
+
+    # 1) 分项评分：已知键名 + 结构兜底（含「维度/得分」的字典数组）
+    _k, items = _first_list("分项评分", "分项", "分项得分", "维度评分")
+    if items is None:
+        for v in raw.values():
+            if isinstance(v, list) and v and all(
+                isinstance(x, dict) and ("维度" in x or "得分" in x) for x in v
+            ):
+                items = v
+                break
+    if not isinstance(items, list):
+        items = []
+
+    # 2) 字符串清单：已知键名优先；缺失时按出现顺序兜底（排除已识别键）
+    prob_key, problems = _first_list("现存问题清单", "存在问题", "问题清单")
+    sug_key, suggestions = _first_list("标题优化建议", "优化建议", "建议清单")
+    if problems is None or suggestions is None:
+        remaining = [
+            v for k, v in raw.items()
+            if isinstance(v, list) and v
+            and all(isinstance(x, str) and x.strip() for x in v)
+            and k not in (prob_key, sug_key)
+        ]
+        if problems is None and remaining:
+            problems = remaining.pop(0)
+        if suggestions is None and remaining:
+            suggestions = remaining.pop(0)
+
+    # 3) 总分：已知键名；缺失时扫描含 "数字/数字" 的字符串
+    total = _first_str("总分", "总得分", "最终得分")
+    if not total:
+        for v in raw.values():
+            if isinstance(v, str):
+                m = re.search(r"\d{1,3}\s*/\s*\d{1,3}", v)
+                if m:
+                    total = m.group(0)
+                    break
+
+    return {
+        "综合等级": _first_str("综合等级", "综合评级", "等级"),
+        "整体总结": _first_str("整体总结", "总结", "综合总结"),
+        "现存问题清单": _strs(problems),
+        "标题优化建议": _strs(suggestions),
+        "分项评分": [it for it in items if isinstance(it, dict)],
+        "总分": total,
+    }
+
+
 def dispatch(feature_type: int, inputs: dict, context: dict | None = None) -> dict:
     """AI 功能执行入口（占位假实现）
 
@@ -234,29 +325,19 @@ def dispatch(feature_type: int, inputs: dict, context: dict | None = None) -> di
         return {"items": _extract_check_items(data.get("outputs") or {})}
 
     if feature_type == FEATURE_SCORE:
-        if not content or not title :
-            raise ValueError("请先填写文稿正文")
+        if not title or not content:
+            raise ValueError("请先填写文稿标题和正文")
+        # 文稿打分：入参 article_title + article_content（见 dify_workflows.input_schema）
         db = SessionLocal()
         try:
             data = run_workflow(
                 db,
-                inputs={
-                    "article_title": title,
-                    "article_content": content
-                },
+                inputs={"article_title": title, "article_content": content},
                 name="article_pingfen",
             )
         finally:
             db.close()
-
-
-        return {
-            "items": [
-                {"维度": "标题与正文适配程度", "得分": "15/20", "建议": "标题与正文匹配程度高"},
-                {"维度": "用语规范", "得分": "10/20", "建议": "文稿用语偏口语化"},
-            ],
-            "总分": "80/100",
-        }
+        return _extract_score_result(data.get("outputs") or {})
 
     raise ValueError(f"未知的 AI 功能类型：{feature_type}")
 
