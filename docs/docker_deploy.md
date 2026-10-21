@@ -18,11 +18,13 @@
 ## 二、快速开始
 
 ```bash
-# 1. 准备环境变量（可选，不建 .env 则用 compose 内默认值）
-#    在项目根目录创建 .env，按需覆盖：
+# 1. 准备环境变量（DB_PASSWORD 与 SECRET_KEY 必填）
+#    在项目根目录创建 .env：
 cat > .env <<'EOF'
-# 生产务必修改
-SECRET_KEY=请改成随机长字符串
+APP_ENV=production
+CORS_ORIGINS=https://你的前端域名
+# 至少 32 位随机字符串
+SECRET_KEY=请改成至少32位随机字符串
 # 你已有的 MySQL 连接信息（必填）
 DB_HOST=你的MySQL地址
 DB_PORT=3306
@@ -95,8 +97,10 @@ CPU 版即可跑通；若要 GPU 推理，需使用 NVIDIA 容器运行时（`nv
 
 | 配置 | 位置 | 说明 |
 | --- | --- | --- |
-| `SECRET_KEY` | `.env` → compose | JWT 签名密钥，必须改成随机长字符串 |
+| `APP_ENV` | compose | 固定为 `production`，启用启动安全校验 |
+| `SECRET_KEY` | `.env` → compose | JWT 签名密钥，必须是至少 32 位随机字符串；缺失时 Compose 拒绝启动 |
 | `DB_PASSWORD` | `.env` → compose | 你已有 MySQL 的数据库密码 |
+| `CORS_ORIGINS` | `.env` → compose | 前端完整来源；多个来源用英文逗号分隔，生产禁止 `*` |
 | `BASE_URL` | `.env` → compose | 静态资源完整 URL 前缀，改为 `http://域名` 或 `http://IP` |
 | 端口 | compose `ports` | 如 80 被占用可改为 `8080:80` |
 

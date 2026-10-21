@@ -17,14 +17,16 @@ services:
     restart: unless-stopped
     environment:
       TZ: Asia/Shanghai
+      APP_ENV: production
+      CORS_ORIGINS: "${CORS_ORIGINS:-http://localhost}"
       # 已有 MySQL 连接信息（默认指向项目开发库，部署时用 .env 覆盖为你实际的库）
       DB_HOST: "${DB_HOST:-192.168.14.216}"
       DB_PORT: "${DB_PORT:-3306}"
       DB_USER: "${DB_USER:-root}"
-      DB_PASSWORD: "${DB_PASSWORD:-password!}"
+      DB_PASSWORD: "${DB_PASSWORD:?请在项目根目录 .env 中配置 DB_PASSWORD}"
       DB_NAME: "${DB_NAME:-wengaofabu}"
       # JWT 密钥：生产必须修改为随机长字符串
-      SECRET_KEY: "${SECRET_KEY:-wengaofabu-prod-secret-change-me}"
+      SECRET_KEY: "${SECRET_KEY:?请在项目根目录 .env 中配置至少 32 位随机 SECRET_KEY}"
       # 静态资源完整 URL 前缀：改为 http://你的域名 或 http://服务器IP
       BASE_URL: "${BASE_URL:-http://localhost:8000}"
       # 以下可选服务按需填写（Dify / Tavily / LLM）

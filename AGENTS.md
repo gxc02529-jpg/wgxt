@@ -63,7 +63,7 @@ npm run dev
    - `app/routers/`：接口路由（Controller 层）
    - `app/core/`：JWT、权限依赖、分页工具
    - `app/services/`：跨路由复用的业务逻辑（如埋点记录）；单接口逻辑简单时可留在路由函数内
-3. **权限**：接口必须显式声明依赖——公开接口不注入用户；需登录用 `Depends(get_current_user)`；仅管理员用 `Depends(require_roles("admin"))`；可选登录用 `Depends(get_optional_user)`。
+3. **权限**：接口必须显式声明依赖——公开接口不注入用户；需登录用 `Depends(get_current_user)`；仅系统管理员用 `Depends(require_roles("admin"))`；审核接口允许 `moderator` 时用 `Depends(require_roles("admin", "moderator"))`；可选登录用 `Depends(get_optional_user)`。角色共四种：`user`、`editor`、`moderator`、`admin`。
 4. **响应格式**：成功返回 `{"message": ..., "业务数据": ...}` 或列表 `{"items": [...], "total": n, "page": p, "page_size": s}`；失败用 `raise HTTPException(状态码, "中文提示")`。
 5. **事务**：一个请求一个 Session（`get_db`），多处修改通过一次 `db.commit()` 一起提交（等价 Spring `@Transactional`）。
 6. **前端**：设计令牌集中在 `frontend/src/styles/tokens.css`；接口定义统一维护在 `frontend/src/api/index.js`；新增页面在 `src/views/` 下创建并注册到 `src/router/index.js`。

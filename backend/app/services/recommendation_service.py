@@ -34,7 +34,7 @@ import math
 import random
 import threading
 from collections import defaultdict
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import numpy as np
 from sqlalchemy import func
@@ -42,7 +42,9 @@ from sqlalchemy.orm import Session, selectinload
 
 from ..models.article import Article, article_categories
 from ..models.article_embedding import ArticleEmbedding
+from ..models.event import EventLog
 from ..models.interaction import UserAction
+from ..models.preference import UserPreference
 from ..models.user import User
 from ..models.view_history import ViewHistory
 from .embedding_service import MODEL_VERSION, build_article_text, hash_source_text, upsert_embedding
@@ -647,3 +649,67 @@ def recommend_articles(db: Session, user: User | None, limit: int) -> list[Artic
     if user is not None and _history_count(db, user.id) >= MIN_HISTORY_FOR_VECTOR:
         return _recommend_by_vector(db, user, limit)
     return _recommend_general(db, user, limit)
+
+
+# 显式偏好与近期行为权重：收藏 > 点赞/分享 > 浏览。
+PREFERENCE_ACTION_WEIGHTS = {"favorite": 3, "like": 2, "share": 2, "view": 1}
+
+
+def _behavior_preference_categories(db: Session, user_id: int, days: int = 30) -> list[int]:
+    """统计用户近期行为对应的栏目得分，返回前三个栏目。"""
+    since = datetime.now() - timedelta(days=days)
+    logs = (
+        db.query(EventLog.event_type, article_categories.c.category_id, func.count(EventLog.id))
+        .join(article_categories, EventLog.article_id == article_categories.c.article_id)
+        .filter(EventLog.user_id == user_id, EventLog.created_at >= since)
+        .group_by(EventLog.event_type, article_categories.c.category_id)
+        .all()
+    )
+    actions = (
+        db.query(UserAction.action_type, article_categories.c.category_id, func.count(UserAction.id))
+        .join(article_categories, UserAction.article_id == article_categories.c.article_id)
+        .filter(UserAction.user_id == user_id, UserAction.created_at >= since)
+        .group_by(UserAction.action_type, article_categories.c.category_id)
+        .all()
+    )
+    scores: dict[int, int] = {}
+    for action_type, category_id, count in [*logs, *actions]:
+        scores[category_id] = scores.get(category_id, 0) + PREFERENCE_ACTION_WEIGHTS.get(action_type, 1) * count
+    return [category_id for category_id, _ in sorted(scores.items(), key=lambda item: item[1], reverse=True)[:3]]
+
+
+def recommend_with_preferences(
+    db: Session,
+    user: User | None,
+    limit: int,
+) -> tuple[str, list[Article]]:
+    """显式兴趣优先，其次近期行为，最后回退向量/通用推荐。"""
+    preferred_category_ids: list[int] = []
+    reason = "全站热门推荐"
+    if user is not None:
+        preferred_category_ids = [
+            row[0]
+            for row in db.query(UserPreference.category_id)
+            .filter(UserPreference.user_id == user.id)
+            .all()
+        ]
+        if preferred_category_ids:
+            reason = "根据您的兴趣偏好推荐"
+        else:
+            preferred_category_ids = _behavior_preference_categories(db, user.id)
+            if preferred_category_ids:
+                reason = "根据您的浏览与互动偏好推荐"
+
+    if preferred_category_ids:
+        rows = (
+            db.query(Article)
+            .filter(Article.status == "published")
+            .join(article_categories, Article.id == article_categories.c.article_id)
+            .filter(article_categories.c.category_id.in_(preferred_category_ids))
+            .distinct()
+            .order_by(Article.view_count.desc(), Article.published_at.desc())
+            .limit(limit)
+            .all()
+        )
+        return reason, rows
+    return reason, recommend_articles(db, user, limit)

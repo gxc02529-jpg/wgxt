@@ -27,6 +27,10 @@ class Settings(BaseSettings):
     DB_PASSWORD: str = "password!"
     DB_NAME: str = "wengaofabu"
 
+    # 运行环境与跨域来源。生产环境会在启动时执行强校验，拒绝弱密钥和通配来源。
+    APP_ENV: str = "development"
+    CORS_ORIGINS: str = "http://localhost:5173,http://127.0.0.1:5173"
+
     # JWT 安全配置（生产环境务必修改 SECRET_KEY）
     SECRET_KEY: str = "wengaofabu-dev-secret-change-me"
     ALGORITHM: str = "HS256"
@@ -72,3 +76,25 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
+
+
+def get_cors_origins(config: Settings = settings) -> list[str]:
+    """把英文逗号分隔的跨域配置转换为 Starlette 所需列表。"""
+    return [item.strip() for item in config.CORS_ORIGINS.split(",") if item.strip()]
+
+
+def validate_runtime_settings(config: Settings = settings) -> None:
+    """生产环境启动保护：在连接数据库前拒绝明显不安全的默认配置。"""
+    if config.APP_ENV.strip().casefold() in {"development", "dev", "test"}:
+        return
+
+    errors: list[str] = []
+    if not config.DB_PASSWORD.strip() or config.DB_PASSWORD == "password!":
+        errors.append("数据库密码仍为开发默认值")
+    if config.SECRET_KEY == "wengaofabu-dev-secret-change-me" or len(config.SECRET_KEY.strip()) < 32:
+        errors.append("SECRET_KEY 必须使用至少 32 位的随机字符串")
+    origins = get_cors_origins(config)
+    if not origins or "*" in origins:
+        errors.append("CORS_ORIGINS 必须明确列出允许的前端来源")
+    if errors:
+        raise RuntimeError("生产配置校验失败：" + "；".join(errors))

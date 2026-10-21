@@ -7,6 +7,7 @@ from ..models.category import Category
 from ..models.channel import Channel
 from ..models.user import User
 from ..schemas.article import ArticleIn
+from .html_sanitizer import sanitize_article_html
 from .text_utils import strip_html
 
 
@@ -46,11 +47,12 @@ class ArticleService:
         body: ArticleIn,
     ) -> Article:
         """创建但不提交草稿，使上层可把其他关联写入同一事务。"""
+        safe_content = sanitize_article_html(body.content)
         article = Article(
             title=body.title,
             summary=body.summary,
-            content=body.content,
-            content_source=body.content_source or strip_html(body.content),
+            content=safe_content,
+            content_source=strip_html(safe_content),
             cover_url=body.cover_url,
             author_id=user.id,
             status="draft",

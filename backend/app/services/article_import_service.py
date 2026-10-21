@@ -28,6 +28,7 @@ from ..models.resource import Resource
 from ..models.user import User
 from ..services.oss_service import get_oss_config
 from ..services.storage_service import save_bytes
+from ..services.html_sanitizer import sanitize_article_html
 from ..services.text_utils import strip_html
 from .embedding_service import sync_articles_batch
 
@@ -261,6 +262,8 @@ def import_excel(db: Session, user: User, file_bytes: bytes, filename: str) -> d
         html, body_img_failed = _download_body_images(db, user, oss_cfg, html, img_cache)
         if body_img_failed:
             warnings.append({"row": row_no, "reason": f"正文 {body_img_failed} 张图片下载失败，已保留原链接"})
+        html = sanitize_article_html(html)
+        content_source = strip_html(html)
 
         article = Article(
             title=title,

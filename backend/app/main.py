@@ -11,7 +11,7 @@ from fastapi import APIRouter, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from .config import settings
+from .config import get_cors_origins, settings, validate_runtime_settings
 from .database import Base, engine, ensure_database, ensure_schema_compat
 from .routers import (
     admin_behavior, articles, auth, categories, channels, comments, dify, events, history,
@@ -23,6 +23,7 @@ from .routers import (
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """启动时自动建库（若不存在）、建表并做表结构兼容检查（表结构变更请重新执行 python init_db.py）"""
+    validate_runtime_settings()
     ensure_database()
     Base.metadata.create_all(bind=engine)
     ensure_schema_compat()
@@ -40,7 +41,7 @@ app = FastAPI(
 # 跨域：前后台分离部署时前端地址需加入 allow_origins
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=get_cors_origins(),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

@@ -153,7 +153,8 @@ python -c "import torch, transformers; print(torch.__version__, torch.cuda.is_av
 | --- | --- |
 | 普通用户 | 浏览门户、搜索、点赞、收藏、转发（均写埋点日志） |
 | 编辑 | 在多个栏目下写作稿件、提交审核、管理自己的资源；后台仅可见「文稿管理 / 资源管理」 |
-| 管理员 | 全部：栏目增删改、二级审核、用户管理（创建账号/冻结/改角色）、资源管理、门户模块配置、数据统计 |
+| 审核管理员（moderator） | 编辑文稿并执行一级、二级审核；不能管理系统配置和用户 |
+| 系统管理员（admin） | 全部：栏目增删改、二级审核、用户管理（创建账号/冻结/改角色）、资源管理、门户模块配置、数据统计 |
 
 ## 文稿审核流程（二级审核）
 
@@ -173,7 +174,7 @@ python -c "import torch, transformers; print(torch.__version__, torch.cuda.is_av
 
 | 表 | 说明 |
 | --- | --- |
-| users | 用户表（role: user/editor/admin；status: active/frozen 冻结） |
+| users | 用户表（role: user/editor/moderator/admin；status: active/frozen 冻结） |
 | categories | 栏目表（名称、标识、简介、排序、启用/隐藏） |
 | articles | 文稿表（标题、摘要、正文、封面、审核状态、互动计数） |
 | article_categories | 文稿-栏目多对多关联 |
@@ -231,7 +232,7 @@ Dify 工作流 `GET/POST /api/dify/workflows`、`PUT/DELETE /api/dify/workflows/
 - 前端新增页面：在 `src/views/` 下创建组件，并在 `src/router/index.js` 注册路由；接口统一在 `src/api/index.js` 维护。
 - 设计规范：颜色/字体/间距等设计令牌集中在 `src/styles/tokens.css`，遵循新闻门户编辑风（主色 `#2563EB`、强调橙 `#F97316`、Newsreader+Roboto）。
 - 生产部署注意：
-  1. 修改 `backend/app/config.py` 中的 `SECRET_KEY`，通过环境变量覆盖数据库密码；
+  1. 设置 `APP_ENV=production`，并通过环境变量提供至少 32 位随机 `SECRET_KEY` 与非默认数据库密码；配置不安全时后端会拒绝启动；
   2. 将 `BASE_URL` 改为实际域名，保证上传资源 URL 可访问；
-  3. 后端 `uploads/` 目录需持久化；`allow_origins` 收紧为前端实际域名；
-  4. 编辑器正文按 HTML 保存，正式环境建议接入富文本编辑器（如 wangEditor）并增加 XSS 过滤（如 bleach）。
+  3. 后端 `uploads/` 目录需持久化；用 `CORS_ORIGINS` 配置前端实际域名，多个来源用英文逗号分隔；
+  4. 编辑器正文按 HTML 保存，后端在写入和读取时都会执行允许列表清洗；扩展富文本标签时需同步更新 `html_sanitizer.py` 的允许列表和安全测试。

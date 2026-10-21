@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""用户模型：注册用户 / 编辑 / 管理员，三种身份通过 role 区分"""
+"""用户模型：普通用户 / 编辑 / 审核管理员 / 系统管理员，通过 role 区分。"""
 from datetime import datetime
 
 from sqlalchemy import Column, Integer, String, DateTime
@@ -16,7 +16,7 @@ class User(Base):
     nickname = Column(String(50), comment="昵称")
     email = Column(String(100), comment="邮箱")
     avatar = Column(String(255), comment="头像URL")
-    # 角色：user 普通用户 / editor 编辑 / admin 管理员
+    # 角色：user 普通用户 / editor 编辑 / moderator 审核管理员 / admin 系统管理员
     role = Column(String(20), default="user", index=True, comment="角色")
     # 状态：active 正常 / frozen 冻结（冻结后无法登录与互动）
     status = Column(String(20), default="active", index=True, comment="账号状态")

@@ -93,7 +93,10 @@ class Article(Base):
             "updated_at": self.updated_at.strftime("%Y-%m-%d %H:%M:%S") if self.updated_at else None,
         }
         if include_content:
-            data["content"] = self.content
+            # 历史数据可能早于写入清洗逻辑；读取时再次清洗，避免旧数据触发存储型 XSS。
+            from ..services.html_sanitizer import sanitize_article_html
+
+            data["content"] = sanitize_article_html(self.content)
             data["content_source"] = self.content_source or ""
         if include_reviews:
             data["reviews"] = [

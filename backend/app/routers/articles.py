@@ -30,6 +30,7 @@ from ..schemas.article_writing import ArticleWritingResponse
 from ..services import embedding_service
 from ..services.ai_service import AIServiceError
 from ..services.article_import_service import import_excel
+from ..services.html_sanitizer import sanitize_article_html
 from ..services.article_summary_service import explain_article_selection, summarize_article
 from ..services.llm_provider import OpenAICompatibleLLMProvider
 from ..services.settings_service import get_setting
@@ -53,7 +54,7 @@ from ..services.smart_collect_article_writing_service import (
 )
 from ..services.text_utils import strip_html
 from ..services.recommendation_service import recommend_articles as legacy_recommend_articles
-from .recommend import recommend_articles as preference_recommend_articles
+from ..services.recommendation_service import recommend_with_preferences
 
 router = APIRouter(prefix="/articles", tags=["文稿"])
 
@@ -296,7 +297,12 @@ def user_recommend_articles(
       若向量化失败会自动回退通用推荐，不阻断接口。
     - 算法细节与调参说明见 docs/article_recommend_spec.md。
     """
-    return preference_recommend_articles(db=db, user=user, limit=limit)
+    reason, items = recommend_with_preferences(db, user, limit)
+    return {
+        "reason": reason,
+        "items": [article.to_dict() for article in items],
+        "total": len(items),
+    }
 
 
 @router.post(
@@ -442,12 +448,13 @@ def create_article(body: ArticleIn, background_tasks: BackgroundTasks, db: Sessi
     # 编辑功能：编辑 / 管理员（moderator）/ 系统管理员
     if user.role not in ("editor", "moderator", "admin"):
         raise HTTPException(403, "仅编辑可写作文稿")
+    safe_content = sanitize_article_html(body.content)
     article = Article(
         title=body.title,
         summary=body.summary,
-        content=body.content,
-        # 纯文本正文：前端随稿提交，缺失时后端从 HTML 剥离兜底
-        content_source=body.content_source or strip_html(body.content),
+        content=safe_content,
+        # 纯文本正文从清洗后的 HTML 生成，防止客户端提交与真实正文不一致。
+        content_source=strip_html(safe_content),
         cover_url=body.cover_url,
         author_id=user.id,
         status="draft",
@@ -500,8 +507,8 @@ def update_article(article_id: int, body: ArticleIn, db: Session = Depends(get_d
 
     article.title = body.title
     article.summary = body.summary
-    article.content = body.content
-    article.content_source = body.content_source or strip_html(body.content)
+    article.content = sanitize_article_html(body.content)
+    article.content_source = strip_html(article.content)
     article.cover_url = body.cover_url
     _apply_categories(db, article, body.category_ids)
     _apply_channels(db, article, body.channel_ids)
